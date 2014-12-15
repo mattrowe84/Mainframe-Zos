@@ -1,0 +1,711 @@
+//KC03O10M JOB ,'MATTHEW ROWE' ,MSGCLASS=H                              
+//STEP1  EXEC  PGM=ASSIST                                               
+//STEPLIB  DD DSN=KC02293.ASSIST.LOADLIB,DISP=SHR                       
+//SYSPRINT DD SYSOUT=*                                                  
+//SYSIN    DD *                                                         
+**********************************************************************  
+* ASSIGNMENT 7                                                          
+* NAME: MATTHEW ROWE                                                    
+* FUNCTION: USE INTERNAL SUBROUTINES TO LOAD A TABLE READ FROM FILE     
+*           PRINT THE VALUES IN LINES OF 5 AND THEN PRINT ALL EVEN      
+*           ENTRIES IN THE SAME FASHION                                 
+*                                                                       
+* INPUT: FT05F001                                                       
+* OUTPUT: STDOUT INDIVIDUAL PAY RECORDS PER EMPLOYEE AS WELL AS TOTALS  
+* ENTRY CONDS: NONE                                                     
+* EXIT CONDS: NONE                                                      
+* REGISTERS: R12--BASE REGISTER                                         
+*            R1---PARAMETER LISTS FOR SUBROUTINES                       
+*            R14--LINK BACK TO MAIN FORWARD POINTER                     
+*            R15--LINK TO SUB FRORWARD POINTER                          
+* PSEUDOCODE: <1> LOAD PARAMS AND BRANCH TO BUILD SUB                   
+*             <2> LOAD PARAMS AND BRANCH TO PRINT SUB                   
+*             <3> LOAD PARAMS AND BRANCH TO SORT  SUB                   
+*             <4> LOAD PARAMS AND BRANCH TO PRINT SUB                   
+*                 FOR SORTED, MULTIPLES OF 6;5; AND 4                   
+*********************************************************************** 
+         TITLE 'MATTHEW ROWE, CSCI 360, PROGRAM6'                       
+         SPACE 3                                                        
+PROG7    CSECT                                                          
+         STM   14,12,12(13)                                             
+         LR    12,15                                                    
+         USING PROG7,12                                                 
+         LA    14,MAINSAVE                                              
+         ST    14,8(13)                                                 
+         ST    13,4(14)                                                 
+         LR    13,14                                                    
+*********CALL BUILD**************************************************** 
+         LA    1,BPARMS                                                 
+         L     15,=V(BUILD)                                             
+         BALR  14,15  
+*********PRINT 1******************************************************
+         LA    1,PPRAM1                                                 
+         L     15,=V(PRINT)                                             
+         BALR  14,15
+*********TRANS  ******************************************************
+         LA    1,TRPRAM                                                 
+         L     15,=V(TRANS)                                             
+         BALR  14,15  
+*********PRINT 2******************************************************
+         LA    1,PPRAM2                                                 
+         L     15,=V(PRINT)                                             
+         BALR  14,15  
+         XDUMP TABLE,ENDTBLE-TABLE
+         L     13,4(13)
+         LM    14,12,12(13)
+         BR    14
+*************CONSTANTS/PARAM LISTS/LABELS*****************************        
+         EJECT                                                          
+         SPACE 3                                                        
+         LTORG                                                          
+MAINSAVE DS    18F                                                      
+         ORG   PROG7+(*-PROG7+31)/32*32                                 
+TABLE    DS    1600C                TABLE FIRST NAME D=0                
+ENDTBLE  DS    0H                                                       
+LASTREC  DS    F                    POINTER FOR LAST RECORD ENTERED     
+PAGENUM  DC    PL1'0'
+PHEAD1   DC    CL25'INITIAL TABLE OF CONTENTS'
+PHEAD2   DC    CL25'TABLE AFTER TRANSACTIONS '
+BPARMS   DC    A(TABLE)             BUILD PARAMETERS                    
+         DC    A(LASTREC)
+PPRAM1   DC    A(TABLE)             PRINT PARAMETERS
+         DC    A(LASTREC)
+         DC    A(PHEAD1)
+         DC    A(PAGENUM)
+PPRAM2   DC    A(TABLE)             2ND PRINT PARAMETERS
+         DC    A(LASTREC)
+         DC    A(PHEAD2)
+         DC    A(PAGENUM)
+TRPRAM   DC    A(TABLE)             TRANS PARAMETERS
+         DC    A(LASTREC)
+         DC    A(PAGENUM)
+*************END CONSTANTS/PARAM LISTS/LABELS*******************        
+*************BUILD SUBROUTINE***********************************        
+* FUNCTION: FILL TABLE WITH VALUES FROM FILE                            
+* REGISTERS: R1---PARAM LIST                                            
+*            R2---RESERVED FOR TRT                                      
+*            R3---EOT POINTER/LAST ENTRY POINTER                        
+*            R4---TABLE POINTER                                         
+*            R5---LENGTH OF ENTRY                                       
+*            R14--RETURN MAIN                                           
+* PSUEDO CODE:<1>SAVE REGISTERS AND LOAD PARAM LIST                     
+*             <2>ENTER LOOP1 ,READ CARD, CHECK FOR EOF                  
+*             <3>READ AND STORE VALUES                                  
+*             <4>MULTIPLY BALANCE BY -1 IF NECESSARY                    
+*                LOOP BACK TO <2> TIL EOF/TABLE FULL                    
+****************************************************************        
+         EJECT                                                          
+         SPACE 3                                                        
+BUILD    CSECT                                                          
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    12,15                LOAD PARAM LIST                     
+         USING BUILD,12                                                 
+         LA    14,BUILDST                                               
+         ST    14,8(13)                                                 
+         ST    13,4(14)                                                 
+         LR    13,14                                                    
+         LM    3,4,0(1)             UNLOAD PARAM LIST                   
+         SR    8,8                  INITIALIZE COUNTER                  
+         LA    5,CARD
+LOOPT    XREAD CARD,80              READ IN FILE                        
+         BC    B'0100',LOOPE        CHECK FOR END OF LOOP AND BRANCH    
+         C     8,=F'50'             CHECK FOR EOT                       
+         BC    B'1000',LOOPE        IF TRUE GO TO END LOOP
+***************ID NUMBER********************************************
+         TRT   0(80,5),TRCHAR       CHECK FOR NON BLANK
+         C     1,=A(MARKER)         CHECK FOR END OF CARD  
+         BC    B'1010',LOOPT        
+         LR    6,1                  STORE NON BLANK
+         TRT   0(80,1),TRBLANK      SEARCH FOR BLANK AFTER CHAR
+         LR    7,1                  STORE ADDRESS
+         LR    9,7                  SAVE BLANK ADDRESS FOR NEX TRT
+         SR    7,6                  GET LENGTH
+         BCTR  7,0                  ADJUST LENGTH
+         EX    7,IDMVC              ID
+         PACK  IDNUM(8),IDNUM(8)    PACK ID
+         CP    IDNUM(8),=P'0'       COMPARE FOR DELIMETER
+         BE    LOOPE                END IF DELIMETER 
+         CVB   10,IDNUM             CONVERT TO BINARY
+         ST    10,TEMP              PLACE IN TEMP STORAGE
+         EX    7,IDSTR              STORE IN TABLE AS BINARY 
+         LA    3,4(0,3)             ADVANCE TABLE POINTER
+         SR    7,7                  CLEAR REGISTER
+         SR    6,6
+***************FIRST NAME*******************************************
+         TRT   0(80,9),TRCHAR       CHECK FOR NON BLANK CHAR       
+         C     1,=A(MARKER)         CHECK EOC 
+         BC    B'1010',LOOPT        
+         LR    6,1                  STORE ADDRESS OF CHAR
+         TRT   0(80,1),TRBLANK      CHECK AFTER CHAR FOR BLANK
+         LR    7,1                  STORE ADDRESS OF BLANK
+         LR    9,7
+         SR    7,6                  GET LENGTH
+         BCTR  7,0                  ADJUST
+         EX    7,FMVC               FIRST NAME
+         LA    3,10(0,3)            ADVANCE POINTER 
+         SR    7,7                  CLEAR REGISTERS 
+         SR    6,6
+****************LAST NAME*******************************************        
+         TRT   0(80,9),TRCHAR       LOOK FOR CHAR
+         C     1,=A(MARKER) 
+         BC    B'1010',LOOPT
+         LR    6,1                  STORE ADDRESS OF CHAR
+         TRT   0(80,1),TRBLANK      SEARCH FOR BLANK AFTER CHAR  
+         LR    7,1                  STORE ADDRESS OF BLANK 
+         LR    9,7
+         SR    7,6                  GET LENGTH  
+         BCTR  7,0                  ADJUST LENGTH
+         EX    7,LMVC               LAST NAME             
+         LA    3,12(0,3)            ADVANCE POINTER 
+         SR    7,7                  CLEAR REGISTERS 
+         SR    6,6    
+****************SCORE 1*********************************************
+         TRT   0(80,9),TRDIGIT     SEARCH FOR DIGIT  
+         C     1,=A(MARKER) 
+         BC    B'1010',LOOPT
+         LR    6,1                  SAVE ADDRESS OF DIGIT
+         TRT   0(80,1),TRBLANK      SEARCH FOR BLANK AFTER DIGIT
+         LR    7,1                  STORE ADDRESS OF BLANK  
+         LR    9,7
+         SR    7,6                  GET LENGTH
+         BCTR  7,0                  ADJUST
+         EX    7,PACKIT             PACK IN TABLE(SCORE 1)
+         LA    3,2(0,3)             ADVANCE TABLE POINTER
+         SR    7,7                  CLEAR REGISTERS
+         SR    6,6
+***************SCORE 2**********************************************
+         TRT   0(80,9),TRDIGIT 
+         C     1,=A(MARKER) 
+         BC    B'1010',LOOPT
+         LR    6,1
+         TRT   0(80,1),TRBLANK
+         LR    7,1
+         LR    9,7
+         SR    7,6
+         BCTR  7,0
+         EX    7,PACKIT    
+         LA    3,2(0,3)
+         SR    7,7
+         SR    6,6
+***************SCORE 3**********************************************
+         TRT   0(80,9),TRDIGIT
+         C     1,=A(MARKER) 
+         BC    B'1010',LOOPT
+         LR    6,1
+         TRT   0(80,1),TRBLANK
+         LR    7,1
+         SR    7,6
+         BCTR  7,0
+         EX    7,PACKIT    
+         LA    3,2(0,3)
+         SR    7,7
+         SR    6,6
+**************INCREMENT AND LOOP************************************
+         A     8,=F'1'
+         B     LOOPT
+LOOPE    ST    3,0(4)               STORE LAST TABLE ADDRESS AT LASTREC 
+         L     13,4(13)                                                 
+         LM    14,12,12(13)         EXIT LINKAGE                        
+         BR    14                   BRANCH TO MAIN                      
+         LTORG                                                          
+BUILDST  DS    18F                                                      
+CARD     DS    80C                  FOR READING RECORDS                 
+MARKER   DC    CL2' 5'
+TRCHAR   DC    256X'FF'
+         ORG   TRCHAR+X'40'
+         DC    X'00'
+         ORG
+TRBLANK  DC    256X'00'
+         ORG   TRBLANK+X'40'
+         DC    X'FF'
+         ORG
+TRDIGIT  DC    256X'00'
+         ORG   TRDIGIT+X'F0'
+         DC    10X'FF'
+         ORG
+TEMP     DS    F
+TRPTR    DS    F
+IDSTR    MVC   0(4,3),TEMP
+IDMVC    MVC   IDNUM(8),0(6)
+FMVC     MVC   0(10,3),0(6)    
+LMVC     MVC   0(12,3),0(6)
+PACKIT   PACK  0(2,3),0(0,6)
+FNAME    DS    10C
+LNAME    DS    12C
+IDNUM    DS    D
+SCORE1   DS    2P
+SCORE2   DS    2P
+SCORE3   DS    2P
+*****************END BUILD************************************
+ENTRY    DSECT
+DID      DS    F
+LNAME1   DS    10C
+FNAME1   DS    12C
+SCRE1    DS    PL2
+SCRE2    DS    PL2
+SCRE3    DS    PL2
+*************PRINT SUBROUTINE*********************************      
+* FUNCTION: PRINT EVEN VALS OF TABLE, 6 PER LINE                        
+* REGISTERS: R1---PARAM LIST                                            
+*            R2---TABLE POITNER                                         
+*            R3---EOT POINTER/LAST ENTRY POINTER                        
+*            R4---HEADER                                           
+*            R5---PAGE NUMBER                                            
+*            R7---VALUE PER LINE COUNTER                                
+*            R8&9-TABLE VALUE IN 32 BIT FORM FOR DIVISION               
+*            R10--TABLE VALUE STORED FOR XPRNT                          
+* PSUEDO CODE:<1>SAVE REGISTERS, LOAD PARAM LIST, INTIALIZE COUNTERS    
+*             <2>ENTER LOOP ,READ TABLE, CHECK FOR EOT                  
+*             <3>XDECI VAL,INCREMENT TABLE, DIVIDE CHECK REM            
+*             <4>IF 0 XDECO TO VAR1 & CONT OTHER WISE LOOP TO <2>       
+*             <5>REPEAT PREVIOUS STEPS 2 &3 UNTIL 7 IS EQUAL TO H       
+*                THEN BRANCH TO XPRNT, RESET COUNTER LOOP TO TOP        
+*             <6>ONCE ALL VALUES CHECKED BRANCH TO END AND PRINT        
+*                REMAINING VALUES                                       
+*             <7>RESTORE REGISTERS AND BRANCH BACK TO MAIN              
+****************************************************************        
+         EJECT                                                          
+         SPACE 3
+******************ENTRY LINKAGE*********************************
+PRINT    CSECT                                                          
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    12,15                ENTRY LINKAGE                       
+         USING PRINT,12                                                 
+         LA    14,PRINTST           LOAD STORAGE AREA                   
+         ST    14,8(13)             ADDRESS HERE                        
+         ST    13,4(14)             ADDRESS BACK                        
+         LR    13,14                                            
+******************SUBROUTINE BODY******************************
+         LM    2,5,0(1)             LOAD PARAMETER LIST
+         L     3,0(0,3)             LOAD EOT
+         MVC   PNUM(2),0(5)         LOAD PAGE COUNTER
+         MVC   ARG(25),0(4)
+         SR    7,7                  INITIALIZE ENTRY/PG COUNTER
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1
+         AP    PNUM,=P'1'
+         MVC   PRNUM(2),=XL2'4020'                                 
+         EDMK  PRNUM(2),PNUM                                            
+         XPRNT HEAD,75              PRINT HEADER                        
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1                                       
+         XPRNT FILLER,80            PRINT COLUMN TITLES                 
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1                                       
+LOOPTOP  CR    2,3                  TEST FOR EOT
+         BC    B'1000',LOOPBOT      IF TRUE END
+         C     7,=F'21'
+         BE    NEWPAGE
+         MVC   TEMPR(4),0(2)
+         L     8,TEMPR              LOAD ID VAL 
+         CVD   8,IDTEMP             CONVERT
+         MVC   IDPRINT(16),=XL16'40202020202020212020202020202020'
+         EDMK  IDPRINT(16),IDTEMP
+*         
+         MVC   LPRINT(12),14(2)                   
+         MVC   FPRINT(10),4(2)                      
+* 
+         MVC   SCR1(2),26(2)
+         MVC   SCR2(2),28(2)
+         MVC   SCR3(2),30(2)
+         MVC   SCOR1(4),SCORPAT
+         EDMK  SCOR1(4),SCR1
+         MVC   SCOR2(4),SCORPAT
+         EDMK  SCOR2(4),SCR2
+         MVC   SCOR3(4),SCORPAT
+         EDMK  SCOR3(4),SCR3
+         XPRNT LINE,83
+*
+         LA    2,32(0,2)            ADVANCE TABLE POINTER
+         A     7,=F'1'
+         B     LOOPTOP
+NEWPAGE  DS    0H                                                       
+         SR    7,7                  RESET COUNTER                       
+         AP    PNUM,=P'1' 
+         MVC   PRNUM(2),=XL2'4020'                                 
+         EDMK  PRNUM(2),PNUM                                            
+         MVC   ARG(25),0(4)
+         XPRNT HEAD,75                                                 
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE
+         XPRNT FILLER,80            PRINT COLUMN TITLES                 
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1                                       
+         B     LOOPTOP              START NEXT LINE                     
+LOOPBOT  DS    0H
+         L     9,PNUM
+         ST    9,0(0,5)
+******************EXIT LINKAGE*********************************
+         L     13,4(13)                                                 
+         LM    14,12,12(13)         EXIT LINKAGE                        
+         BR    14                   BRANCH TO MAIN                      
+******************PRINT CONSTANTS******************************
+         LTORG
+PRINTST  DS    18F 
+PNUM     DC    PL1'0'
+TEMPR    DS    F
+IDTEMP   DS    D
+SCR1     DS    2P
+SCR2     DS    2P
+SCR3     DS    2P
+SCORPAT  DC    XL4'40202020'
+******************DATA LINE TEMPLATE*************************** 
+LINE     DC    C'0'                                                     
+         DC    120C' '
+         ORG   LINE+2
+IDPRINT  DC    16C' '                                                   
+         ORG   LINE+20                                                    
+LPRINT   DC    12C' '                                                   
+         ORG   LINE+34                                                    
+FPRINT   DC    10C' '                                                   
+         ORG   LINE+50                                                    
+SCOR1    DC    4C' '                                                    
+         ORG   LINE+62                                                    
+SCOR2    DC    4C' '               
+         ORG   LINE+74
+SCOR3    DC    4C' '
+         ORG
+******************DATA LINE = 83 ******************************
+******************FILL LINE TEMPLATE***************************
+FILLER   DC    C'-'                                                     
+         DC    120C' '
+         ORG   FILLER+9                                                   
+         DC    CL9'ID NUMBER'                                         
+         ORG   FILLER+20                                                    
+         DC    CL10'LAST NAME '                                         
+         ORG   FILLER+34                                                   
+         DC    CL12'FIRST NAME  '                                       
+         ORG   FILLER+50                                                    
+         DC    CL7'SCORE 1'                                            
+         ORG   FILLER+61                                                   
+         DC    CL7'SCORE 2'                                         
+         ORG   FILLER+72                                                     
+         DC    CL7'SCORE 3'                                           
+         ORG 
+*********************  FILLER =94C*****************************
+******************HEADER 1************************************
+HEAD     DC    C'1'
+         DC    CL120' '
+         ORG   HEAD+24
+ARG      DC    25C' '
+         ORG   HEAD+64
+         DC    CL6'PAGE: '
+         ORG   HEAD+70
+PRNUM    DC    PL2'0'
+         ORG
+******************  HEAD = 74C********************************
+******************END PRINT***********************************
+******************TRANS **************************************
+******************ENTRY LINKAGE*******************************
+TRANS    CSECT                                                          
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    12,15                ENTRY LINKAGE                       
+         USING TRANS,12                                                 
+         LA    14,TRANSST           LOAD STORAGE AREA                   
+         ST    14,8(13)             ADDRESS HERE                        
+         ST    13,4(14)             ADDRESS BACK                        
+         LR    13,14                                            
+******************SUBROUTINE BODY*****************************
+         LM    3,5,0(1)             UNLOAD PARAM LIST                   
+         USING ENTRY,11
+         LA    6,TCARD
+         L     4,0(0,4)             LOAD EOT
+         MVC   PGNUM(1),0(5)        LOAD PAGE NUMBER VALUE
+         AP    PGNUM,=P'1'          INCREMENT PAGE
+         MVC   TRPAG(2),=XL2'4020'                             
+         EDMK  TRPAG(2),PGNUM
+         XPRNT THEAD,120
+         MVC   0(1,5),PGNUM         STORE PAGE NUMBER
+******************LOOP FOR LOADING TRANSACTION****************
+LLOOP    XREAD TCARD,80             READ FIRST TRANSACTION
+         BC    B'0100',TREND        CHECK FOR EOF LOOP AND BRANCH
+         MVC   TDNUM(8),0(6)
+         PACK  TDNUM(8),TDNUM(8)    PACK ID
+******************TRANSACTION TYPE***************************  
+         MVC   TRTYPE(1),9(6)     STORE TRANSACTION TYPE
+         CLI   TRTYPE,C'S'              CHECKFOR STATISTICS
+         BE    STATS
+         CLI   TRTYPE,C'N'              CHECK FOR NEW SCORE
+         BNE   ERROR                
+******************NEW SCORE SECTION***************************
+         MVC   TEMPSCR(3),11(6)
+         PACK  NEWSCR(2),TEMPSCR(3)
+         LR    11,3                 LOAD TABLE ADDRESS  
+******************NEW SCORE/ SEARCH FOR ID********************
+CLOOP    CR    11,4
+         BC    B'1000',IDNF         BRANCH IF ID NOT FOUND
+         MVC   TEMPS(4),0(11)        LOAD TABLE ID
+         L     10,TEMPS
+         CVD   10,TNUM              CONVERT TO DECIMAL
+         CP    TNUM,TDNUM           COMPARE
+         BE    SCLOOP               IF FOUND MOVE TO COMPARE SCORE
+         LA    11,32(0,11)          ADVANCE TABLE POINTER
+         B     CLOOP                LOOP FOR NEXT ID 
+******************FIND LOW SCORE******************************
+SCLOOP   DS    0H
+         MVC   STLOW(2),26(11)      LOAD SCORE 1 = HIGH
+         MVC   TESTSCR2(2),28(11)    LOAD SCORE 2
+         CP    STLOW(2),TESTSCR2(2) COMPARE 1 TO 2
+         BL    NEXT                  IF 1 BIGGER JUMP TO NEXT
+         MVC   STLOW(2),30(11)      REPLACE SCORE 1 WITH SCORE 3
+         CP    STLOW(2),TESTSCR2(2) COMPARE 3 TO 2 
+         BH    AVGCALC               IF BIGGER JUMP TO CHECK REPLACE
+         MVC   STLOW(2),TESTSCR2     ELSE:2 IS NEW LOW
+         B     LOW2
+*
+NEXT     MVC   TESTSCR2(2),30(11)    REPLACE SCORE 2 WITH SCORE 3   
+         CP    STLOW(2),TESTSCR2(2)  COMPARE 1 TO 3 
+         BL    LOW1                  IF 1 LOWER JUMP TO CHECK REPLACE
+         MVC   STHIGH,TESTSCR2       ELSE: 3 IS NEW HIGH
+         B     LOW3
+******************NEWSCORE/ CHECK IF NEED REPLACE*************
+LOW1     CP    NEWSCR(2),STLOW(2)      CHECK REPLACE FOR LOW=SORE1  
+         BL    NOREP
+         MVC   SCRE1(2),NEWSCR
+         B     SCPRINT
+LOW2     CP    NEWSCR(2),STLOW(2)      CHECK REPLACE FOR LOW=SORE2
+         BL    NOREP
+         MVC   SCRE2(2),NEWSCR
+         B     SCPRINT
+LOW3     CP    NEWSCR(2),STLOW(2)      CHECK REPLACE FOR LOW=SORE3  
+         BL    NOREP
+         MVC   SCRE3(2),NEWSCR
+         B     SCPRINT
+******************NEW SCORE/PRINT AREAS***********************
+NOREP    DS    0H
+         MVC   NOTRANID(16),=XL16'40202020202020212020202020202020'
+         EDMK  NOTRANID(16),TDNUM
+         MVC   NOSCR(4),=XL4'40202020'
+         EDMK  NOSCR(4),NEWSCR
+         XPRNT SNPRNT,120
+         MVI   CLEARL+1,C' '
+         MVC   CLEARL+2(118),CLEARL
+         B     LLOOP         
+SCPRINT  DS    0H
+         MVC   NTRANID(16),=XL16'40202020202020212020202020202020'
+         EDMK  NTRANID(16),TDNUM   
+         MVC   NSCR(4),=XL4'40202020'
+         EDMK  NSCR(4),NEWSCR
+         XPRNT SCPRNT,120
+         MVI   CLEARL+1,C' '
+         MVC   CLEARL+2(118),CLEARL
+         B     LLOOP
+******************STATS SECTION*******************************
+STATS    DS    0H
+         LR    11,3                 LOAD TABLE ADDRESS   
+******************STATS/FIND ID******************************
+C2LOOP   CR    11,4
+         BC    B'1000',IDNF         BRANCH IF ID NOT FOUND
+         MVC   TEMPS(4),0(11)       LOAD TABLE ID
+         L     10,TEMPS
+         CVD   10,TNUM              CONVERT TO DECIMAL
+         CP    TNUM,TDNUM           COMPARE
+         BE    HIFIND               IF FOUND MOVE TO COMPARE SCORE
+         LA    11,32(0,11)          ADVANCE TABLE POINTER
+         B     C2LOOP               LOOP FOR NEXT ID
+******************STATS/FIND HIGH VALUE LOOP*****************
+HIFIND   DS    0H
+         MVC   STHIGH(2),26(11)      LOAD SCORE 1 = HIGH
+         MVC   TESTSCR2(2),28(11)    LOAD SCORE 2
+         CP    STHIGH(2),TESTSCR2(2) COMPARE 1 TO 2
+         BH    NEXT1                 IF 1 BIGGER JUMP TO NEXT
+         MVC   STHIGH(2),30(11)      REPLACE SCORE 1 WITH SCORE 3
+         CP    STHIGH(2),TESTSCR2(2) COMPARE 3 TO 2 
+         BH    AVGCALC               IF BIGGER JUMP TO CHECK REPLACE
+         MVC   STHIGH(2),TESTSCR2    ELSE:2 IS NEW HIGH
+         B     AVGCALC
+*
+NEXT1    MVC   TESTSCR2(2),30(11)    REPLACE SCORE 2 WITH SCORE 3   
+         CP    STHIGH(2),TESTSCR2(2) COMPARE 1 TO 3 
+         BH    AVGCALC               IF 1 LOWER JUMP TO CHECK REPLACE
+         MVC   STHIGH,TESTSCR2       ELSE: 3 IS NEW HIGH
+******************STATS/AVERAGE CALCULATION******************** 
+AVGCALC  DS    0H
+         MVC   TESTSCR1(2),26(11)   LOAD SCORE 1
+         AP    AVG,TESTSCR1(2)
+         MVC   TESTSCR1(2),28(11)   LOAD SCORE 1
+         AP    AVG,TESTSCR1(2)
+         MVC   TESTSCR1(2),30(11)   LOAD SCORE 1
+         AP    AVG,TESTSCR1(2)
+         DP    AVG,=PL1'3'
+******************STATS/PRINT*********************************
+         MVC   STRANID(16),=XL16'40202020202020212020202020202020'
+         EDMK  STRANID(16),TDNUM   
+         MVC   HIGHSC(4),=XL4'40202020'
+         EDMK  HIGHSC(4),STHIGH
+         MVC   AVGTR(4),=XL4'40202020'
+         EDMK  AVGTR(5),AVG
+         XPRNT STPRNT,120
+         MVI   CLEARL+1,C' '
+         MVC   CLEARL+2(118),CLEARL
+         ZAP   AVG,=P'0'
+         B     LLOOP                GET NEXT TRANSACTION
+******************ERROR/INVALID ENTRY*************************
+ERROR    DS    0H                   
+         MVC   ETRANID(16),=XL16'40202020202020212020202020202020'
+         EDMK  ETRANID(16),TDNUM
+         MVC   TRCODE(1),TRTYPE
+         XPRNT ERPRNT,120
+         MVI   CLEARL+1,C' '
+         MVC   CLEARL+2(118),CLEARL
+         B     LLOOP                GET NEXT TRANSACTION
+******************ERROR/ID NOT FOUND**************************
+IDNF     DS    0H
+         CLI   TRTYPE,C'S'
+         BE    IDNF2
+         MVC   NF1ID(16),=XL16'40202020202020212020202020202020'
+         EDMK  NF1ID(16),TDNUM
+         XPRNT N1PRNT,120
+         MVI   CLEARL+1,C' '
+         MVC   CLEARL+2(118),CLEARL
+         B     LLOOP                GET NEXT TRANSACTION
+IDNF2    DS    0H
+         MVC   NF2ID(16),=XL16'40202020202020212020202020202020'
+         EDMK  NF2ID(16),TDNUM
+         XPRNT N2PRNT,120
+         MVI   CLEARL+1,C' '
+         MVC   CLEARL+2(118),CLEARL
+         B     LLOOP                GET NEXT TRANSACTION
+******************END TRANSACTION LOOP************************
+TREND    DS    0H
+         XDUMP
+******************EXIT LINKAGE********************************
+         L     13,4(13)                                                 
+         LM    14,12,12(13)         EXIT LINKAGE                        
+         BR    14                   BRANCH TO MAIN                      
+******************SUBROUTINE CONSTANTS************************
+         LTORG   
+TRANSST  DS    18F 
+TCARD    DS    80C                  FOR READING RECORDS  
+TCHAR    DC    256X'FF'
+         ORG   TCHAR+X'40'
+         DC    X'00'
+         ORG
+TBLANK   DC    256X'00'
+         ORG   TBLANK+X'40'
+         DC    X'FF'
+         ORG
+STLOW    DC    PL2'0'
+AVG      DC    PL3'0'    
+STHIGH   DC    PL2'0'
+TESTSCR1 DC    PL2'0'
+TESTSCR2 DC    PL2'0'
+TESTSCR3 DC    PL2'0'
+TEMPSCR  DC    ZL3'0'
+NEWSCR   DC    PL2'0'
+TRTYPE   DC    C' '
+TEMPS    DS    F    
+TDMVC    PACK  TDNUM(8),0(6)         ID NUMBER 
+CPMVC    MVC   TNUM(8),0(6)
+TRANMVC  MVC   TRTYPE(1),0(6)       TRANSACTION TYPE
+PSCR     PACK  NEWSCR(2),0(0,6)     PACK NEW SCORE
+TDNUM    DS    D                    TRANSACTION ID FOR SEARCH
+TNUM     DS    D                    TABLE ID NUMBERS
+TMARKER  DC    CL2' 5'
+PGNUM    DS    PL1'0'
+*****************HEADER TEMPLATE******************************
+THEAD    DC    C'1'
+         DC    CL120' '
+         ORG   THEAD+24
+         DC    CL25'RESULTS OF TRANSACTIONS  '
+         ORG   THEAD+64
+         DC    CL6'PAGE: '
+         ORG   THEAD+70
+TRPAG    DC    CL2' '
+         ORG
+CLEARL   DC    C'0'
+         DC    119C' '
+****************NEW SCORE PRINT TEMPLATE*********************
+SNPRNT   DC    C'0'
+         DC    CL120' '
+         ORG   SNPRNT+5
+         DC    CL4'ID = '
+         ORG   SNPRNT+10
+NOTRANID DS    16C
+         ORG   SNPRNT+30
+         DC    CL16'TYPE = NEW SCORE'
+         ORG   SNPRNT+50
+         DC    CL8'SCORE = '
+         ORG   SNPRNT+62
+NOSCR    DS    4C
+         ORG   SNPRNT+70
+         DC    CL9'NO CHANGE'
+         ORG
+*
+SCPRNT   DC    C'0'
+         DC    CL120' '
+         ORG   SCPRNT+5
+         DC    CL4'ID = '
+         ORG   SCPRNT+10
+NTRANID  DS    16C
+         ORG   SCPRNT+26
+         DC    CL14'              '             
+         ORG   SCPRNT+30
+         DC    CL16'TYPE = NEW SCORE'
+         ORG   SCPRNT+50
+         DC    CL8'SCORE = '
+         ORG   SCPRNT+62
+NSCR     DS    4C
+         ORG
+****************STATISTICS PRINT TEMPLATE********************
+STPRNT   DC    C'0'
+         DC    CL120' '
+         ORG   STPRNT+5 
+         DC    CL4'ID = '
+         ORG   STPRNT+10
+STRANID  DS    16C
+         ORG   SCPRNT+30
+         DC    CL17'TYPE = NEW SCORE '
+         ORG   STPRNT+50
+         DC    CL8'HIGH= '
+         ORG   STPRNT+62
+HIGHSC   DS    4C
+         ORG   STPRNT+68
+         DC    CL10'AVERAGE = '
+         ORG   STPRNT+80
+AVGTR    DS    4C
+         ORG
+******************ERROR PRINT TEMPLATE***********************
+ERPRNT   DC    C'0'
+         DC    CL120' '
+         ORG   ERPRNT+5 
+         DC    CL4'ID = '
+         ORG   ERPRNT+10
+ETRANID  DS    16C
+         ORG   ERPRNT+30
+         DC    CL14'TRANS. CODE = '
+         ORG   ERPRNT+50
+TRCODE   DS    C
+         ORG   ERPRNT+62
+         DC    CL24'INVALID TRANSACTION CODE'
+         ORG
+******************IDNF PRINT TEMPLATE************************
+N1PRNT   DC    C'0'
+         DC    CL120' '
+         ORG   N1PRNT+5 
+         DC    CL4'ID = '
+         ORG   N1PRNT+10
+NF1ID    DS    16C
+         ORG   N1PRNT+30
+         DC    CL16'TYPE = NEW SCORE'
+         ORG   N1PRNT+51
+         DC    CL12'ID NOT FOUND'
+         ORG
+N2PRNT   DC    C'0'
+         DC    CL120' '
+         ORG   N2PRNT+5 
+         DC    CL4'ID = '
+         ORG   N2PRNT+10
+NF2ID    DS    16C
+         ORG   N2PRNT+30
+         DC    CL17'TYPE = STATISTICS'
+         ORG   N2PRNT+51
+         DC    CL12'ID NOT FOUND'
+         ORG
+         DROP  11
+******************TRANS END**********************************
+         END   PROG7                                                    
+/*                                                                      
+//FT05F001  DD DSN=KC02314.SUMMER14.CSCI360.HW7DATA,DISP=SHR            
+//FT06F001  DD SYSOUT=*                                                 
+//
