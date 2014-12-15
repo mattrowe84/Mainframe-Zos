@@ -1,0 +1,311 @@
+//KC03O10M JOB ,'MATTHEW ROWE' ,MSGCLASS=H                              00010000
+//STEP1  EXEC  PGM=ASSIST                                               00020000
+//STEPLIB  DD DSN=KC02293.ASSIST.LOADLIB,DISP=SHR                       00030000
+//SYSPRINT DD SYSOUT=*                                                  00040000
+//SYSIN    DD *                                                         00050000
+**********************************************************************  00060000
+* ASSIGNMENT 4                                                          00070000
+* NAME: MATTHEW ROWE                                                    00080000
+* FUNCTION: USE INTERNAL SUBROUTINES TO LOAD A TABLE READ FROM FILE     00090000
+*           PRINT THE VALUES IN LINES OF 5 AND THEN PRINT ALL EVEN      00100000
+*           ENTRIES IN THE SAME FASHION                                 00110000
+*                                                                       00111000
+* INPUT: FT05F001                                                       00120000
+* OUTPUT: STDOUT INDIVIDUAL PAY RECORDS PER EMPLOYEE AS WELL AS TOTALS  00130000
+* ENTRY CONDS: NONE                                                     00140000
+* EXIT CONDS: NONE                                                      00150000
+* REGISTERS: R15--BASE REGISTER                                         00160000
+*            R2---PARAMETER LISTS FOR SUBROUTINES                       00170081
+*            R10--BAL FOR BUILD SUB                                     00180081
+*            R11--BAL FOR PRINT SUB                                     00190081
+*            R13--BAL FOR PRINTE SUB                                    00200081
+* PSEUDOCODE: <1> LOAD PARAMS AND BRANCH TO BUILD SUB                   00210081
+*             <2> LOAD PARAMS AND BRANCH TO PRINT SUB                   00220082
+*             <3> LOAD PARAMS AND BRANCH TO PRINTE SUB                  00230082
+*********************************************************************** 00270000
+         TITLE 'MATTHEW ROWE, CSCI 360, PROGRAM4'                       00271000
+         SPACE 3                                                        00272000
+MAIN     CSECT                                                          00280000
+         USING MAIN,15                                                  00281000
+*********CALL BUILD**************************************************** 00281152
+         LA    2,BPARMS                                                 00281312
+         BAL   10,BUILD                                                 00281400
+*********CALL PRINT**************************************************** 00281552
+         XPRNT HEADER,40                                                00281674
+         MVI   HEADER+1,C' '                                            00281773
+         MVC   HEADER+2(38),HEADER+1                                    00281873
+         LA    2,PPARMS                                                 00282050
+         BAL   11,PRINT                                                 00282100
+*********CALL PRINTE*************************************************** 00282274
+         XPRNT HEADER2,40                                               00282374
+         MVI   HEADER2+1,C' '                                           00282473
+         MVC   HEADER2+2(38),HEADER2+1                                  00282574
+         LA    2,PEPARMS                                                00282748
+         BAL   13,PRINTE                                                00282876
+         XDUMP TABLE,ENDTBLE-TABLE                                      00282925
+         BR    14                                                       00283000
+*************CONSTANTS/PARAM LISTS/LABELS***********************        00283104
+         EJECT                                                          00283205
+         SPACE 3                                                        00283305
+         LTORG                                                          00283424
+TABLE    DC    48F'0'              TABLE INITIALIZED TO 0               00283575
+ENDTBLE  DS    0H                  END OF TABLE                         00283675
+LASTREC  DC    A(TABLE)            POINTER FOR LAST RECORD ENTERED      00283775
+HEADER   DC    C'1'                                                     00283871
+         DC    CL39'            LIST OF NUMBERS           '             00283971
+HEADER2  DC    C'1'                                                     00284071
+         DC    CL39'            LIST OF EVEN NUMBERS      '             00284171
+BPARMS   DC    A(TABLE)             BUILD PARAMETERS                    00284275
+         DC    A(LASTREC)                                               00284304
+PPARMS   DC    A(TABLE)             PRINT PARAMETERS                    00284475
+         DC    A(LASTREC)                                               00284504
+PEPARMS  DC    A(TABLE)             PRINTE PARAMETERS                   00284675
+         DC    A(LASTREC)                                               00284704
+*************END CONSTANTS/PARAM LISTS/LABELS*******************        00284804
+*************BUILD SUBROUTINE***********************************        00284904
+* FUNCTION: FILL TABLE WITH VALUES FROM FILE                            00285081
+* REGISTERS: R2---PARAM LIST                                            00285181
+*            R3---TABLE POITNER                                         00285281
+*            R4---EOT POINTER/LAST ENTRY POINTER                        00285381
+*            R6---COUNTER FOR EOT                                       00285481
+*            R7---VALUE OF CURRENT CARD POS                             00285581
+*            R10--RETURN MAIN                                           00285681
+* PSUEDO CODE:<1>SAVE REGISTERS AND LOAD PARAM LIST                     00285781
+*             <2>ENTER LOOP1 ,READ CARD, CHECK FOR EOF                  00285881
+*             <3>XDECI FIRST VAL,INCREMENT TABLE, CHECK FOR EOC         00285981
+*             <4>LOOP2, CONTINUE TO PROCESS FILES UNTIL END OF CARD     00286081
+*                LOOP BACK TO <2> TIL EOF/TABLE FULL                    00286181
+****************************************************************        00286281
+         EJECT                                                          00286301
+         SPACE 3                                                        00286401
+BUILD    DS    0H                                                       00286552
+         STM   3,7,BUILDST          STORE REGISTERS                     00286678
+         LM    3,4,0(2)             LOAD PARAM LIST                     00286778
+         SR    6,6                  INITIALIZE COUNTER                  00286875
+LOOP1T   XREAD RECORD,80            READ IN FILE                        00286975
+         BC    B'0100',LOOP1E       CHECK FOR END OF LOOP AND BRANCH    00287075
+         C     6,=F'48'             CHECK FOR EOT                       00287176
+         BC    B'1000',LOOP2E       IF TRUE GO TO END LOOP2             00287276
+         XDECI 7,RECORD             READ FIRST RECORD                   00287375
+         BC    B'0001',LOOP1T       IF END OF CARD BRANCH TO LOOP1T     00287476
+         ST    7,0(0,3)             STORE RECORD                        00287575
+         LA    3,4(0,3)             ADVANCE TABLE                       00287675
+         A     6,=F'1'              INCREMENT COUNTER                   00287775
+LOOP2T   DS    0H                                                       00287876
+         C     6,=F'48'             CHECK EOT                           00287976
+         BC    B'1000',LOOP2E       IF TABLE FULL  BRANCH TO END        00288075
+         XDECI 7,0(0,1)             READ VAL INTO R7                    00288175
+         BC    B'0001',LOOP1T       IF END OF CARD BRANCH LOOP1T        00288276
+         ST    7,0(0,3)             STORE VAL AT OPEN TABLE SPOT        00288375
+         LA    3,4(0,3)             INCREMENT TABLE ADDRESS/PTR         00288475
+         A     6,=F'1'              INCREMENT COUNTER                   00288575
+         B     LOOP2T               BRANCH TO LOOP2T TIL END OF CARD    00288676
+LOOP2E   DS    0H                   LOOP2 END                           00288776
+         B     LOOP1T               BRANCH TO 1ST LOOP TOP TIL EOF      00288876
+LOOP1E   DS    0H                   LOOP1 END                           00288976
+         ST    3,LASTREC            STORE LAST TABLE ADDRESS AT LASTREC 00289075
+         LM    3,8,BUILDST          RESTORE REGISTERS BEFORE BRANCH     00289175
+         BR    10                   BRANCH BACK TO MAIN                 00289275
+RECORD   DS    80C                  FOR READING RECORDS                 00289375
+         DC    C'*'                                                     00289444
+BUILDST  DS    5F                   BUILD SAVE AREA                     00289576
+*************END BUILD SUBROUTINE*******************************        00289604
+*************PRINT SUBROUTINE***********************************        00289700
+* FUNCTION: PRINT CONTENTS OF TABLE, 5 PER LINE                         00289881
+* REGISTERS: R2---PARAM LIST                                            00289981
+*            R3---TABLE POITNER                                         00290081
+*            R4---EOT POINTER/LAST ENTRY POINTER                        00290181
+*            R5---1ST VALUE TO PRINT                                    00290281
+*            R6---2ND VALUE TO PRINT                                    00290381
+*            R7---3RD VALUE TO PRINT                                    00290481
+*            R8---4TH VALUE TO PRINT                                    00290581
+*            R9---5TH VALUE TO PRINT                                    00290681
+*            R11--RETURN TO MAIN                                        00290781
+* PSUEDO CODE:<1>SAVE REGISTERS AND LOAD PARAM LIST                     00290881
+*             <2>ENTER LOOP ,READ TABLE, CHECK FOR EOT                  00290981
+*             <3>XDECI FIRST VAL,INCREMENT TABLE, CHECK FOR EOT         00291081
+*             <4>REPEAT <3> UNTIL ALL 5 VALS ARE SAVED IN REGISTERS     00291181
+*                LOOP BACK TO <2> TIL ALL VALS PRINTED, BRANCH TO MAIN  00291281
+****************************************************************        00291381
+         EJECT                                                          00291422
+         SPACE 3                                                        00291522
+PRINT    DS    0H                                                       00291652
+         STM   3,9,PRINTST          STORE REGISTERS                     00291776
+         LM    3,4,0(2)             LOAD PARAM LIST                     00291876
+         MVI   PLINE+1,C' '         DESTRUTIVE OVERLAP                  00291975
+         MVC   PLINE+2(72),PLINE+1                                      00292075
+LOOPTOP  CR    3,4                  CHECK FOR EOT                       00292176
+         BC    B'1000',LOOPBOT      IF TRUE END                         00292276
+         L     5,0(3)               LOAD CURRENT VAL                    00292375
+         XDECO 5,VAL1               STORE 1ST VAL FOR PRNT              00292476
+         LA    3,4(0,3)             MOVE TO NEXT ENTRY                  00292576
+         L     6,0(3)               LOAD CURRENT VAL                    00292676
+         XDECO 6,VAL2               STORE 2ND VAL FOR PRNT              00292776
+         LA    3,4(0,3)             MOVE TO NEXT ENTRY                  00292875
+         L     7,0(3)               LOAD CURRENT VAL                    00292976
+         XDECO 7,VAL3               STORE 3RD VAL FOR PRNT              00293076
+         LA    3,4(0,3)             MOVE TO NEXT ENTRY                  00293175
+         CR    3,4                                                      00293284
+         BC    B'1000',LOOPBOT                                          00293384
+         L     8,0(3)               LOAD CURRENT VAL                    00293476
+         XDECO 8,VAL4               STORE 4TH VAL FOR PRNT              00293576
+         LA    3,4(0,3)             MOVE TO NEXT ENTRY                  00293675
+         L     9,0(3)               LOAD CURRENT VAL                    00293776
+         XDECO 9,VAL5               STORE 5TH VAL FOR PRNT              00293876
+         LA    3,4(0,3)             MOVE TO NEXT ENTRY                  00293983
+         XPRNT PLINE,73             PRINT VALS                          00294075
+         MVI   PLINE+1,C' '         DESTRUTIVE OVERLAP                  00294165
+         MVC   PLINE+2(72),PLINE+1  CLEAR LINES                         00294276
+         B     LOOPTOP              BRANCH TO BEGINING FOR NEXT CARD    00294376
+LOOPBOT  DS    0H                   END                                 00294476
+         XPRNT PLINE,73             PRINT VALS                          00294584
+         MVI   PLINE+1,C' '         DESTRUTIVE OVERLAP                  00294684
+         MVC   PLINE+2(72),PLINE+1  CLEAR LINES                         00294784
+         LM    3,9,PRINTST          RESTORE REGISTERS                   00294876
+         BR    11                   BRANCH BACK TO MAIN                 00294976
+***************PRINT SUBROUTINE CONST'S******************************   00295076
+PLINE    DC    C'0'                                                     00295151
+VAL1     DS    7C                                                       00295262
+         DC    7C' '                                                    00295363
+VAL2     DS    7C                                                       00295462
+         DC    7C' '                                                    00295563
+VAL3     DS    7C                                                       00295662
+         DC    7C' '                                                    00295763
+VAL4     DS    7C                                                       00295862
+         DC    7C' '                                                    00295963
+VAL5     DS    7C                                                       00296062
+         DC    2C' '                                                    00296163
+PRINTST  DS    7F                  PRINT SUB'S STORAGE AREA             00296276
+*************END PRINT SUBROOUTINE******************************        00296304
+*************PRINTE SUBROUTINE**********************************        00296400
+* FUNCTION: PRINT EVEN VALS OF TABLE, 6 PER LINE                        00296581
+* REGISTERS: R2---PARAM LIST                                            00296681
+*            R3---TABLE POITNER                                         00296781
+*            R4---EOT POINTER/LAST ENTRY POINTER                        00296881
+*            R6---REMAINDER VALUE TO CHECK EVEN                         00296981
+*            R7---VALUE TO BE DIVIDED/6TH XPRNT VAL                     00297081
+*            R8---1ST VALUE TO PRINT                                    00297181
+*            R9---2ND VALUE TO PRINT                                    00297281
+*            R10--3RD VALUE TO PRINT                                    00297381
+*            R11--4TH VALUE TO PRINT                                    00297481
+*            R12--5TH VALUE TO PRINT                                    00297581
+*            R13--RETURN TO MAIN                                        00297681
+* PSUEDO CODE:<1>SAVE REGISTERS AND LOAD PARAM LIST                     00297781
+*             <2>ENTER LOOP ,READ TABLE, CHECK FOR EOT                  00297881
+*             <3>XDECI FIRST VAL,INCREMENT TABLE, DIVIDE CHECK REM      00297981
+*             <4>IF 0 CONTINUE SAVE POINT, OTHER WISE LOOP TO <2>       00298081
+*             <5>XDECI NEXT VAL,INCREMENT TABLE, DIVIDE CHECK REM       00298181
+*             <6>IF 0 CONTINUE SAVE POINT, OTHER WISE LOOP TO <5>       00298281
+*             <7>XDECI NEXT VAL,INCREMENT TABLE, DIVIDE CHECK REM       00298381
+*             <8>IF 0 CONTINUE SAVE POINT, OTHER WISE LOOP TO <7>       00298481
+*             <9>XDECI NEXT VAL,INCREMENT TABLE, DIVIDE CHECK REM       00298581
+*             <10>IF 0 CONTINUE SAVE POINT, OTHER WISE LOOP TO <9>      00298681
+*             <11>XDECI NEXT VAL,INCREMENT TABLE, DIVIDE CHECK REM      00298781
+*             <12>IF 0 CONTINUE SAVE POINT, OTHER WISE LOOP TO <11>     00298881
+*             <13>XDECI NEXT VAL,INCREMENT TABLE, DIVIDE CHECK REM      00298981
+*             <14>IF 0 CONTINUE XPRNT, OTHER WISE LOOP TO <13>          00299081
+*             <15>XDECO 6 VALS AND PRNT, LOOP TO<2> TILL EOT            00299181
+*             <16>AT EOT EXIT LOOP XDECO REMAINING AND XPRNT            00299281
+*                 RESTORE REGISTERS, BRANCH BACK TO MAIN                00299382
+****************************************************************        00299481
+         EJECT                                                          00299504
+         SPACE 3                                                        00299604
+PRINTE   DS    0H                                                       00299703
+         STM   3,12,PRNTEST         STORE REGISTERS                     00299876
+         LM    3,4,0(2)             LOAD PARAM LIST                     00299978
+         MVI   LINE+1,C' '          DESTRUCTIVE OVERLAP                 00300076
+         MVC   LINE+2(71),LINE+1    CLEAR LINES                         00300176
+LOUPTOP  CR    3,4                  TEST FOR EOT                        00300276
+         BC    B'1000',LOUPBOT      IF TRUE END                         00300376
+         SR    6,6                                                      00300476
+         L     7,0(3)               LOAD CURRENT VAL                    00300576
+         LR    8,7                  COPY R7 TO R8                       00300676
+         LA    3,4(0,3)             ADVANCE TABLE POINTER               00300776
+         D     6,=F'2'              DIVIDE BY 2                         00300876
+         C     6,=F'0'              CHECK REMAINDER                     00300976
+         BNZ   LOUPTOP              LOOP TO BEGINNING                   00301076
+SAVE1    CR    3,4                  CHECK FOR EOT                       00301176
+         BC    B'1000',LOUPBOT      IF TRUE END                         00301276
+         SR    6,6                                                      00301376
+         L     7,0(3)               LOAD CURRENT VAL                    00301476
+         LR    9,7                  COPY R7 TO R9                       00301576
+         LA    3,4(0,3)             ADVANCE TABLE POINTER               00301676
+         D     6,=F'2'              DIVIDE BY 2                         00301776
+         C     6,=F'0'              CHECK REMAINDER                     00301876
+         BNZ   SAVE1                LOOP TO SAVE1 IF NOT 0              00301980
+SAVE2    CR    3,4                  CHECK FOR EOT                       00302076
+         BC    B'1000',LOUPBOT      IF TRUE END                         00302176
+         SR    6,6                                                      00302276
+         L     7,0(3)               LOAD CURRENT VAL                    00302376
+         LR    10,7                 COPY R7 TO R10                      00302476
+         LA    3,4(0,3)             ADVANCE TABLE POINTER               00302576
+         D     6,=F'2'              DIVIDE BY 2                         00302676
+         C     6,=F'0'              CHECK REMAINDER                     00302776
+         BNZ   SAVE2                LOOP TO SAVE2                       00302876
+SAVE3    CR    3,4                  CHECK FOR EOT                       00302976
+         BC    B'1000',LOUPBOT      IF TRUE END                         00303076
+         SR    6,6                                                      00303176
+         L     7,0(3)               LOAD CURRENT VAL                    00303276
+         LR    11,7                 COPY R7 TO R11                      00303376
+         LA    3,4(0,3)             ADVANCE TABLE POINTER               00303476
+         D     6,=F'2'              DIVIDE BY 2                         00303576
+         C     6,=F'0'              CHECK REMAINDER                     00303676
+         BNZ   SAVE3                LOOP TO SAVE3                       00303776
+SAVE4    CR    3,4                  CHECK FOR EOT                       00303876
+         BC    B'1000',LOUPBOT      IF TRUE END                         00303976
+         SR    6,6                                                      00304076
+         L     7,0(3)               LOAD CURRENT VAL                    00304176
+         LR    12,7                 COPY R7 TO R12                      00304276
+         LA    3,4(0,3)             ADVANCE TABLE POINTER               00304376
+         D     6,=F'2'              DIVIDE BY 2                         00304476
+         C     6,=F'0'              CHECK REMAINDER                     00304576
+         BNZ   SAVE4                LOOP TO SAVE4                       00304676
+SAVE5    CR    3,4                  CHECK FOR EOT                       00304779
+         BC    B'1000',LOUPBOT      IF TRUE END                         00304879
+         SR    6,6                                                      00304979
+         L     7,0(3)               LOAD CURRENT VAL                    00305079
+         LA    3,4(0,3)             ADVANCE TABLE POINTER               00305179
+         D     6,=F'2'              DIVIDE BY 2                         00305279
+         C     6,=F'0'              CHECK REMAINDER                     00305379
+         BNZ   SAVE5                LOOP TO SAVE5                       00305480
+         M     6,=F'2'                                                  00305579
+         XDECO 8,VAR1               LOAD FIRST POS FOR PRINT            00305676
+         XDECO 9,VAR2               LOAD NEXT                           00305776
+         XDECO 10,VAR3              LOAD NEXT                           00305876
+         XDECO 11,VAR4              LOAD NEXT                           00305976
+         XDECO 12,VAR5              LOAD NEXT                           00306079
+         XDECO 7,VAR6               LOAD LAST                           00306179
+         XPRNT LINE,73              PRINT VALS                          00306276
+         MVI   LINE+1,C' '          DESTRUTIVE OVERLAP                  00306376
+         MVC   LINE+2(72),LINE+1                                        00306476
+         B     LOUPTOP              START NEXT LINE                     00306577
+LOUPBOT  DS    0H                                                       00306677
+         XDECO 8,VAR1               LOAD FIRST POS FOR PRINT            00306780
+         XDECO 9,VAR2               LOAD NEXT                           00306880
+         XDECO 10,VAR3              LOAD NEXT                           00306980
+         XDECO 11,VAR4              LOAD NEXT                           00307080
+         XDECO 12,VAR5              LOAD LAST                           00307180
+         XPRNT LINE,73              PRINT VALS                          00307280
+         LM    3,12,PRNTEST         RESTORE REGISTERS                   00307376
+         BR    13                   BRANCH TO MAIN                      00307476
+***************PRINTE SUBROUTINE CONST'S*****************************   00307576
+LINE     DC    C'0'                                                     00307676
+VAR1     DS    7C                                                       00307776
+         DC    5C' '                                                    00307879
+VAR2     DS    7C                                                       00307976
+         DC    5C' '                                                    00308079
+VAR3     DS    7C                                                       00308176
+         DC    5C' '                                                    00308279
+VAR4     DS    7C                                                       00308376
+         DC    5C' '                                                    00308479
+VAR5     DS    7C                                                       00308576
+         DC    5C' '                                                    00308679
+VAR6     DS    7C                                                       00308779
+         DC    5C' '                                                    00308879
+PRNTEST  DS    10F                  PRINTE SUB'S STORAGE AREA           00308976
+*************END PRINTE SUBROUTINE******************************        00309004
+         END   MAIN                                                     00309100
+/*                                                                      00309200
+//FT05F001  DD DSN=KC02314.SUMMER14.CSCI360.HW4DATA,DISP=SHR            00310000
+//FT06F001  DD SYSOUT=*                                                 00379000
+//                                                                      00440000
