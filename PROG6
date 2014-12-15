@@ -1,0 +1,475 @@
+//KC03O10M JOB ,'MATTHEW ROWE' ,MSGCLASS=H                              00010000
+//STEP1  EXEC  PGM=ASSIST                                               00020000
+//STEPLIB  DD DSN=KC02293.ASSIST.LOADLIB,DISP=SHR                       00030000
+//SYSPRINT DD SYSOUT=*                                                  00040000
+//SYSIN    DD *                                                         00050000
+**********************************************************************  00060000
+* ASSIGNMENT 6                                                          00070000
+* NAME: MATTHEW ROWE                                                    00080000
+* FUNCTION: USE INTERNAL SUBROUTINES TO LOAD A TABLE READ FROM FILE     00090000
+*           PRINT THE VALUES IN LINES OF 5 AND THEN PRINT ALL EVEN      00100000
+*           ENTRIES IN THE SAME FASHION                                 00110000
+*                                                                       00111000
+* INPUT: FT05F001                                                       00120000
+* OUTPUT: STDOUT INDIVIDUAL PAY RECORDS PER EMPLOYEE AS WELL AS TOTALS  00130000
+* ENTRY CONDS: NONE                                                     00140000
+* EXIT CONDS: NONE                                                      00150000
+* REGISTERS: R12--BASE REGISTER                                         00160000
+*            R1---PARAMETER LISTS FOR SUBROUTINES                       00170000
+*            R14--LINK BACK TO MAIN FORWARD POINTER                     00180000
+*            R15--LINK TO SUB FRORWARD POINTER                          00190000
+* PSEUDOCODE: <1> LOAD PARAMS AND BRANCH TO BUILD SUB                   00210000
+*             <2> LOAD PARAMS AND BRANCH TO PRINT SUB                   00211000
+*             <3> LOAD PARAMS AND BRANCH TO SORT  SUB                   00220000
+*             <4> LOAD PARAMS AND BRANCH TO PRINT SUB                   00230000
+*                 FOR SORTED, MULTIPLES OF 6;5; AND 4                   00240000
+*********************************************************************** 00270000
+         TITLE 'MATTHEW ROWE, CSCI 360, PROGRAM6'                       00271000
+         SPACE 3                                                        00272000
+PROG6    CSECT                                                          00280000
+         STM   14,12,12(13)                                             00280100
+         LR    12,15                                                    00280200
+         USING PROG6,12                                                 00281000
+         LA    14,MAINSAVE                                              00281100
+         ST    14,8(13)                                                 00281200
+         ST    13,4(14)                                                 00281300
+         LR    13,14                                                    00281400
+*********CALL BUILD**************************************************** 00281600
+         LA    1,BPARMS                                                 00281700
+         L     15,=V(BUILD)                                             00281800
+         BALR  14,15                                                    00281900
+*********CALL PRINT1*************************************************** 00282000
+         LA    1,P1PAR                                                  00282716
+         L     15,=V(PRINT)                                             00282816
+         BALR  14,15                                                    00282916
+*********CALL SORT***************************************************** 00283000
+         LA    1,SORTPL                                                 00283100
+         L     15,=V(SORT)                                              00283200
+         BALR  14,15                                                    00283300
+*********CALL PRINT2*************************************************** 00283400
+         LA    1,P2PAR                                                  00283816
+         L     15,=V(PRINT)                                             00283916
+         BALR  14,15                                                    00284016
+*********CALL TALLY**************************************************** 00284100
+         LA    1,TALLPL                                                 00284516
+         L     15,=V(TALLY)                                             00284616
+         BALR  14,15                                                    00284716
+         XDUMP 
+         L     13,4(13)                                                 00286300
+         LM    14,12,12(13)                                             00286400
+         BR    14                                                       00286500
+*************CONSTANTS/PARAM LISTS/LABELS***********************        00286600
+         EJECT                                                          00286700
+         SPACE 3                                                        00286800
+         LTORG                                                          00286900
+MAINSAVE DS    18F                                                      00287026
+         ORG   PROG6+(*-PROG6+15)/16*16                                 00287100
+TABLE    DC    70CL48' '             TABLE FIRST NAME D=0               00287216
+ENDTBLE  DS    0H                                                       00288000
+LASTREC  DS    1F                   POINTER FOR LAST RECORD ENTERED     00288100
+NUMENT   DS    1F                   NUMBER OF ENTRIES                   00289000
+FIRST    DC    C'1'                 PRINT HEADER INDICATOR              00289125
+SECOND   DC    C'2'                 PRINT HEADER INDICATOR              00289225
+BPARMS   DC    A(TABLE)             BUILD PARAMETERS                    00289500
+         DC    A(LASTREC)                                               00289600
+         DC    A(NUMENT)                                                00289700
+P1PAR    DC    A(TABLE)             BEFORE SORT PRINT PARAM LIST        00289800
+         DC    A(LASTREC)                                               00289900
+         DC    A(FIRST)                                                 00290000
+P2PAR    DC    A(TABLE)             AFTER SORT PARAM LIST               00291000
+         DC    A(LASTREC)                                               00291100
+         DC    A(SECOND)                                                00291200
+SORTPL   DC    A(TABLE)
+         DC    A(LASTREC)
+TALLPL   DC    A(TABLE)             TALLY PARAM LIST                    00291300
+         DC    A(LASTREC)                                               00291400
+         DC    A(NUMENT)                                                00291500
+*************END CONSTANTS/PARAM LISTS/LABELS*******************        00291700
+*************BUILD SUBROUTINE***********************************        00291800
+* FUNCTION: FILL TABLE WITH VALUES FROM FILE                            00291900
+* REGISTERS: R1---PARAM LIST                                            00292000
+*            R2---TABLE POITNER                                         00292100
+*            R3---EOT POINTER/LAST ENTRY POINTER                        00292200
+*            R4---TOTAL ENTRY FOR TABLE                                 00292300
+*            R6---COUNTER OF VALUES IN TABLE                            00292400
+*            R14--RETURN MAIN                                           00292600
+* PSUEDO CODE:<1>SAVE REGISTERS AND LOAD PARAM LIST                     00292700
+*             <2>ENTER LOOP1 ,READ CARD, CHECK FOR EOF                  00292800
+*             <3>READ AND STORE VALUES                                  00292900
+*             <4>MULTIPLY BALANCE BY -1 IF NECESSARY                    00293000
+*                LOOP BACK TO <2> TIL EOF/TABLE FULL                    00293100
+****************************************************************        00293200
+         EJECT                                                          00293300
+         SPACE 3                                                        00293400
+BUILD    CSECT                                                          00293500
+         STM   14,12,12(13)         STORE REGISTERS                     00293600
+         LR    12,15                LOAD PARAM LIST                     00293700
+         USING BUILD,12                                                 00293800
+         LA    14,BUILDST                                               00293900
+         ST    14,8(13)                                                 00294000
+         ST    13,4(14)                                                 00294100
+         LR    13,14                                                    00294200
+         LM    2,4,0(1)             UNLOAD PARAM LIST                   00294300
+         SR    6,6                  INITIALIZE COUNTER                  00294400
+LOOPT    XREAD CARD,80              READ IN FILE                        00294524
+         BC    B'0100',LOOPE        CHECK FOR END OF LOOP AND BRANCH    00294600
+         C     6,=F'70'             CHECK FOR EOT                       00294700
+         BC    B'1000',LOOPE        IF TRUE GO TO END LOOP              00294800
+         MVC   0(10,2),CARD+12      FIRST NAME                          00294900
+         MVC   10(10,2),CARD        LAST NAME                           00295000
+         MVC   20(10,2),CARD+24     ID                                  00295100
+         MVC   29(10,2),CARD+35     PASSWORD                            00295200
+         PACK  37(5,2),CARD+55(7)   BALANCE                             00295300
+         PACK  42(5,2),CARD+45(8)   EXPIRATION DATE                     00295400
+         A     6,=F'1'              INCREMENT                           00295600
+         CLI   CARD+62,C'-'         SIGN COMPARISON                     00295700
+         BE    MINUS                IF IS A MINUS BRANCH                00295800
+         LA    2,48(0,2)            ADVANCE TABLE POINTER               00295900
+         B     LOOPT                                                    00296000
+MINUS    MP    37(5,2),=P'-1'       AND MULTIPLY BY -1                  00296100
+         LA    2,48(0,2)            ADVANCE TABLE POINTER               00296200
+         B     LOOPT                BRANCH TO LOOP TOP                  00297000
+LOOPE    ST    6,0(0,4)             LOOP END                            00297900
+         ST    2,0(3)               STORE LAST TABLE ADDRESS AT LASTREC 00298000
+         L     13,4(13)                                                 00298100
+         LM    14,12,12(13)         EXIT LINKAGE                        00298200
+         BR    14                   BRANCH TO MAIN                      00298300
+         LTORG                                                          00299000
+BUILDST  DS    18F                                                      00300400
+CARD     DS    80C                  FOR READING RECORDS                 00300500
+         DC    C'*'                                                     00300600
+*************END BUILD SUBROUTINE*******************************        00300700
+*************PRINT SUBROUTINE***********************************        00300800
+* FUNCTION: PRINT EVEN VALS OF TABLE, 6 PER LINE                        00300900
+* REGISTERS: R1---PARAM LIST                                            00301000
+*            R3---TABLE POITNER                                         00301100
+*            R4---EOT POINTER/LAST ENTRY POINTER                        00301200
+*            R5---VALUE OF D                                            00301300
+*            R6---VALUE OF H                                            00301400
+*            R7---VALUE PER LINE COUNTER                                00301500
+*            R8&9-TABLE VALUE IN 32 BIT FORM FOR DIVISION               00301600
+*            R10--TABLE VALUE STORED FOR XPRNT                          00301700
+* PSUEDO CODE:<1>SAVE REGISTERS, LOAD PARAM LIST, INTIALIZE COUNTERS    00302100
+*             <2>ENTER LOOP ,READ TABLE, CHECK FOR EOT                  00302200
+*             <3>XDECI VAL,INCREMENT TABLE, DIVIDE CHECK REM            00302300
+*             <4>IF 0 XDECO TO VAR1 & CONT OTHER WISE LOOP TO <2>       00302400
+*             <5>REPEAT PREVIOUS STEPS 2 &3 UNTIL 7 IS EQUAL TO H       00302500
+*                THEN BRANCH TO XPRNT, RESET COUNTER LOOP TO TOP        00302600
+*             <6>ONCE ALL VALUES CHECKED BRANCH TO END AND PRINT        00302700
+*                REMAINING VALUES                                       00302800
+*             <7>RESTORE REGISTERS AND BRANCH BACK TO MAIN              00302900
+****************************************************************        00303800
+         EJECT                                                          00303900
+         SPACE 3                                                        00304000
+PRINT    CSECT                                                          00304100
+         STM   14,12,12(13)         STORE REGISTERS                     00304200
+         LR    12,15                ENTRY LINKAGE                       00304329
+         USING PRINT,12                                                 00304500
+         LA    14,PRINTST           LOAD STORAGE AREA                   00304629
+         ST    14,8(13)             ADDRESS HERE                        00304729
+         ST    13,4(14)             ADDRESS BACK                        00304829
+         LR    13,14                                                    00304900
+         LM    2,4,0(1)             LOAD PARAM LIST                     00305000
+         L     3,0(0,3)             LOAD EOT                            00305103
+         SR    7,7                  INITIALIZE ENTRY/PG COUNTER
+         MVI   LINE+1,C' '                                              00305321
+         MVC   LINE+2(118),LINE+1
+         SP    PNUM,PNUM(1)
+         AP    PNUM,=P'1'
+         CLI   0(4),C'2'            CHECK HEADER ARGUMENT               00305628
+         BE    HEADER2                                                  00305800
+         MVC   PRNUM(2),=XL2'4020'                                 
+         EDMK  PRNUM(2),PNUM                                            00306349
+         XPRNT HEAD,120             PRINT HEADER                        00306429
+         MVI   LINE+1,C' '                                              00306521
+         MVC   LINE+2(118),LINE+1                                       00306621
+         XPRNT FILLER,120           PRINT COLUMN TITLES                 00306729
+         MVI   LINE+1,C' '                                              00306821
+         MVC   LINE+2(118),LINE+1                                       00306922
+LOOPTOP  CR    2,3                  TEST FOR EOT                        00307100
+         BC    B'1000',LOOPBOT      IF TRUE END                         00307200
+         MVC   FNAME(10),0(2)       PUT FIRST NAME IN FNAME             00307320
+         MVC   LNAME(10),10(2)      PUT LAST NAME IN LNAME              00307420
+         MVC   PASS(8),29(2)        PUT PASSWORD IN PASS                00308033
+         MVC   EXDAT(5),42(2)       PUT EXPIRATION DATE IN EXDAT        00308133
+         MVC   EXPD(12),=XL12'402020202020612020612020'                 00309029
+         ED    EXPD(12),EXDAT                                           00309131
+         MVC   IDNUM(9),20(2)          PUT ID NUMBER IN IDNUM           00310007
+         MVC   ENDBAL(5),37(2)         PUT BALANCE IN END BAL          
+         CP    ENDBAL(5),=P'0'                                          00311029
+         BNH   NEGBAL                                                   00312029
+         LA    1,BAL+7
+         MVC   BAL(14),=XL14'40202020202021204B202040C3D9'                
+         EDMK  BAL(14),ENDBAL                                           00314033
+         BCTR  1,0                                                      00315033
+         MVI   0(1),C'$'                                                00316033
+         XPRNT LINE,120             PRINT VALS                          00317100
+         MVI   LINE+1,C' '          DESTRUTIVE OVERLAP                  00317200
+         MVC   LINE+2(118),LINE+1                                       00317300
+         LA    2,48(0,2)            ADVANCE POINTER                     00317419
+         A     7,=F'1'                                                  00317500
+         C     7,=F'24'                                                 00317600
+         BNL   NEWPG                                                    00317730
+         B     LOOPTOP                                                  00317800
+NEGBAL   DS    0H                                                       00317900
+         LA    1,BAL+7
+         MVC   BAL(14),=XL14'40202020202021204B202040C3D9'                
+         EDMK  BAL(14),ENDBAL                                           00318100
+         BCTR  1,0                                                      00318200
+         MVI   0(1),C'$'                                                00318300
+         XPRNT LINE,120             PRINT VALS                          00319000
+         MVI   LINE+1,C' '          DESTRUTIVE OVERLAP                  00319100
+         MVC   LINE+2(118),LINE+1                                       00319200
+         LA    2,48(0,2)            ADVANCE POINTER                     00319300
+         A     7,=F'1'                                                  00319400
+         C     7,=F'24'                                                 00319500
+         BNL   NEWPG                                                    00319630
+         B     LOOPTOP                                                  00319700
+NEWPG    DS    0H                                                       00319829
+         SR    7,7                  RESET COUNTER                       00319933
+         CLI   0(4),C'2'                                                00320030
+         BE    HEADER2                                                  00320130
+         AP    PNUM,=P'1' 
+         MVC   PRNUM(2),=XL2'4020'                                 
+         EDMK  PRNUM(2),PNUM                                            00320749
+         XPRNT HEAD,120                                                 00320800
+         MVI   LINE+1,C' '                                              00320927
+         MVC   LINE+2(118),LINE
+         XPRNT FILLER,120           PRINT COLUMN TITLES                 
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1                                       
+         B     LOOPTOP              START NEXT LINE                     00321100
+HEADER2  DS    0H                                                       00321229
+         MVI   LINE+1,C' '                                              00321327
+         MVC   LINE+2(118),LINE+1 
+         MVC   PRNUM2(2),=XL2'4020'                             
+         EDMK  PRNUM2(2),PNUM                                           00321849
+         XPRNT HEAD2,120                                                00321929
+         AP    PNUM,=P'1'                                               00322043
+         MVI   LINE+1,C' '                                              00322129
+         MVC   LINE+2(118),LINE+1                                       00322229
+         XPRNT FILLER,120                                               00322300
+         MVI   LINE+1,C' '                                              00322422
+         MVC   LINE+2(118),LINE+1                                       00322522
+         B     LOOPTOP                                                  00322600
+LOOPBOT  DS    0H                                                       00322700
+         L     13,4(13)                                                 00322800
+         LM    14,12,12(13)         EXIT LINKAGE                        00322900
+         BR    14                   BRANCH TO MAIN                      00323000
+***************PRINT  SUBROUTINE CONST'S*****************************   00323100
+         LTORG                                                          00323200
+PRINTST  DS    18F                                                      00323300
+PINC     DC    PL1'1'
+         ORG 
+HEAD     DC    C'1'                                                     00323400
+         DC    48C' '
+         DC    CL31'FAMOUS NAMES -- CLIENT LIST    '
+         DC    11C' '
+         DC    CL6'PAGE: '
+         DC    2C' '
+PRNUM    DC    PL2'0'                                                   00323947
+         DC    19C' '                                                   00324040
+HEAD2    DC    C'1'                                                     00324100
+         DC    48C' '                                                   00324200
+         DC    CL31'CLIENT LIST SORTED BY LAST NAME'                    00324300
+         DC    11C' '                                                   00324440
+         DC    CL6'PAGE: '
+         DC    2C' '
+PRNUM2   DC    PL2'0'                       PAGE NUMBER                 00324647
+         DC    19C' '
+FILLER   DC    C'-'                                                     00324800
+         DC    10C' '                                                   00324900
+         DC    CL10'FIRST NAME'                                         00325000
+         DC    9C' '                                                    00325100
+         DC    CL10'LAST NAME '                                         00325200
+         DC    7C' '                                                    00325300
+         DC    CL12'  BALANCE   '                                       00325400
+         DC    8C' '                                                    00325500
+         DC    CL8'PASSWORD'                                            00325600
+         DC    10C' '                                                   00325700
+         DC    CL10'EXP. DATE '                                         00325800
+         DC    9C' '                                                    00325900
+         DC    CL9'ID NUMBER'                                           00326000
+         DC    7C' '                                                    00326100
+LINE     DC    C'0'                                                     00326200
+         DC    10C' '                                                   00326300
+FNAME    DC    10C' '                                                   00326433
+         DC    9C' '                                                    00326500
+LNAME    DC    10C' '                                                   00326633
+         DC    5C' '                                                    00326700
+BAL      DC    14C' '                                                   00326833
+         DC    8C' '                                                    00326900
+PASS     DC    8C' '                                                    00327033
+         DC    8C' '                                                    00327100
+EXPD     DC    12C' '                                                   00327233
+         DC    9C' '                                                    00327329
+IDNUM    DC    9C' '                                                    00327433
+         DC    7C' '                                                    00327500
+PNUM     DC    PL1'0'                                                   00327649
+EXDAT    DC    PL5'0'                                                   00327733
+ENDBAL   DS    PL5'0'        
+*************END PRINT  SUBROUTINE******************************        00327900
+*************SORT SUBROUTINE ***********************************        00328000
+* FUNCTION: SORT TABLE IN DECENDING ORDER                               00328100
+* REGISTER USAGE:                                                       00328200
+*    1 - USED BY XDECI / PARAM LIST ADDR                                00328300
+*    2 - PARAM LIST, TABLE                                              00328400
+*    3 - PARAM LIST, EOT                                                00328500
+*    5 - J PTR                                                          00328600
+*    6 - MIN PTR                                                        00328700
+*    7 - VALUE OF J                                                     00328800
+*    8 - VALUE OF MAX                                                   00328900
+*    9 - VALUE OF I                                                     00329000
+*   14 - SUBROUTINE RETURN ADDRESS                                      00329100
+*   11 - TEMPT                                                          00329200
+* PSEUDO CODE:                                                          00329300
+*            <1> LOAD 1ST ADDRESS AND NEXT ADRESS STORE START IN R6     00329400
+*            <2> LOAD VALS AND COMPARE, IF 2ND IS LARGER, SWITCH        00329500
+*                VALUES AND ADVANCE TO SECOD TABLE POSITION, ELSE       00329600
+*                MOVE THROUGH EACH VAL UNTIL WE FIND A LARGER VAL       00329700
+*            <3> REPEAT FROM BEGINNING UNTIL ALL ITEMS ARE SORTED       00329800
+*            <4> RETURN TO MAIN                                         00329900
+*****************************************************************       00330000
+         SPACE 3                                                        00330100
+SORT     CSECT                                                          00330200
+         STM   14,12,12(13)                                             00330300
+         LR    12,15                                                    00330400
+         USING SORT,12                                                  00330500
+         LA    14,SORTST                                                00330600
+         ST    14,8(13)                                                 00330700
+         ST    13,4(14)                                                 00330800
+         LR    13,14                                                    00330900
+         LM    2,3,0(1)            UNLOAD PARAM LIST                    00331000
+LOOP1    C     2,0(3)              CHECK FOR EOT                        00331200
+         BNL   END1                IF IS EOT END                        00331300
+         LR    6,2                 LOW=BEGIN                            00331400
+         LR    5,2                 I=BEGIN                              00331500
+         LA    5,48(05)            I INCREMENT
+         MVC   NAME1(48),0(6)      KEY(LOW) INTO NAME1
+LOOP2    C     5,0(3)              CHECK FOR EOT                        00331600
+         BNL   END2                IS 5 EOT                             00331700
+         MVC   NAME2(48),0(5)      KEY(I) INTO NAME 2
+         CLC   10(10,6),NAME2+10   COMPARE LOW TO I                     00332000
+         BNH   ENDIF               LOW COMPARED TO I                    00332100
+         MVC   NAME1(48),NAME2     I = LOW
+         LR    6,5                 STORE CURRENT LOW ADDRESS
+ENDIF    LA    5,48(0,5)           INCREMENT I                          00332300
+         B     LOOP2               REPEAT LOOP2                         00332400
+END2     MVC   NAME2(48),0(2)      LOAD BEGIN VAL
+         MVC   0(48,2),NAME1       STORE LOW AT BEGIN
+         MVC   0(48,6),NAME2       STORE BEGIN AT LOW ADDRESS
+         LA    2,48(0,2)           INCREMENT I PTR 2                    00332900
+         B     LOOP1               REPEAT LOOP1                         00333000
+END1     DS    0H                  INCREMENT TABLE/I                    00333100
+         L     13,4(13)                                                 00333200
+         LM    14,12,12(13)        EXIT LINKAGE                         00333300
+         BR    14                  BRANCH TO MAIN                       00333400
+SORTST   DS    18F                                                      00333500
+         LTORG
+NAME1    DS    48C
+NAME2    DS    48C
+*************END SORT SUBROUTINE *******************************        
+****************************************************************        
+* FUNCTION: TALLY TABLE VALUES                           
+* REGISTER USAGE:                                                       
+*    1 - USED BY PARAM LIST ADDR                                        
+*    2 - PARAM LIST, TABLE                                              
+*    3 - PARAM LIST, EOT                                                
+*PSEUDO CODE:                                                           
+*            <1> LOAD 1ST ADDRESS CHECK,POSITVE AND LARGE
+*            <2> STORE LARGE
+*            <3> ADD VALUE TO TOTAL AND INCREMENT ENTRY COUNTER
+*            <4> LOOP UNTIL EOT
+*            <5> CALCULATE AVERAGE
+*            <6> PRINT TALLY'S/TOTALS
+*            <7> RETURN TO MAIN
+***************************************************************        
+         EJECT                                                          
+         SPACE 3                                                        
+TALLY    CSECT                                                          
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    12,15                LOAD PARAM LIST                     
+         USING TALLY,12                                                 
+         LA    14,TALLYST                                               
+         ST    14,8(13)                                                 
+         ST    13,4(14)                                                 
+         LR    13,14                                                    
+         LM    2,3,0(1)             UNLOAD PARAM LIST                   
+LOOPTAL  C     2,0(3)
+         BNL   ENDLOOP
+         CP    37(5,2),=P'0'        CHECK FOR POSITIVE                                      
+         BNL   JUMP1                MOVE ON TO LARGE CHECK
+         AP    NBAL,=P'1'           IF NEG ADD ONE TO NEG COUNTER
+JUMP1    CP    37(5,2),LARGE        COMPARE CURRENT TO LARGE
+         BL    JUMP2                IF SMALLER JUMP AHEAD TO 2
+         ZAP   LARGE(5),37(5,2)     IF LARGER REPLACE
+JUMP2    AP    CLCNT,=P'1'          INCREMENT CLIENT COUNTER
+         AP    TOTAL,37(5,2)        ADD TO TOTAL BALANCE
+         LA    2,48(0,2)            ADVANCE POINTER 
+         B     LOOPTAL              GO TO TOP
+ENDLOOP  DS    0H                   END 
+         ZAP   AVGBAL(10),TOTAL(5)  PLACE TOTAL IN AVERAGE BALANCE  
+         DP    AVGBAL(10),CLCNT(5)  CALCULATE AVERAGE
+         MVC   VAL1(10),PAT2        
+         EDMK  VAL1(10),CLCNT
+         XPRNT TALPRNT1,121         PRINT CLIENTS
+**************PRINT TALLY*****************************************
+         MVC   VAR2(29),=CL29'SUM OF ACCOUNT BALANCES:     '
+         MVC   VAL2(16),PAT1
+         LA    1,VAL2+9
+         EDMK  VAL2(16),TOTAL
+         BCTR  1,0
+         MVI   0(1),C'$'
+         XPRNT TALPRNT2,121
+         MVI   TALPRNT2+1,C' '                                              
+         MVC   TALPRNT2+2(119),TALPRNT2+1  
+         MVC   VAR2(29),=CL29'LARGEST ACCOUNT BALANCE:     '
+         MVC   VAL2(16),PAT1
+         LA    1,VAL2+9
+         EDMK  VAL2(16),LARGE
+         BCTR  1,0
+         MVI   0(1),C'$'
+         XPRNT TALPRNT2,121
+         MVI   TALPRNT2+1,C' '                                              
+         MVC   TALPRNT2+2(119),TALPRNT2+1
+         MVI   TALPRNT1,C'0'
+         MVC   TALPRNT1+31(29),=CL29'NUMBER OF NEGATIVE BALANCES: '
+         MVC   VAL1(10),PAT2
+         EDMK  VAL1(10),NBAL
+         XPRNT TALPRNT1,121
+         MVI   TALPRNT1+1,C' '                                              
+         MVC   TALPRNT1+2(119),TALPRNT1+1
+         L     13,4(13)                                                 
+         LM    14,12,12(13)         EXIT LINKAGE                        
+         BR    14                   BRANCH TO MAIN                      
+************TALLY CONST/LABELS***********************************       
+         LTORG
+TALLYST  DS    18F
+PAT1     DC    XL16'4040202020206B2021204B202040C3D9'
+PAT2     DC    XL10'40202020202020202120'
+TALPRNT1 DC    C'-'
+         DC    CL120' '    
+         ORG   TALPRNT1+31
+         DC    CL18'NUMBER OF CLIENTS'
+         ORG   TALPRNT1+66
+VAL1     DC    10C' '
+         DC    3C' ' 
+         ORG
+TALPRNT2 DC    C'0'
+         DC    CL120' '
+         ORG   TALPRNT2+31
+VAR2     DC    29C' '
+         ORG   TALPRNT2+66
+VAL2     DC    16C' '
+         ORG
+TOTAL    DC    PL5'0'               ACCOUNT BALANCE TOTAL
+AVGBAL   DC    PL10'0'              AVERAGE ACCT BALANCE
+LARGE    DC    PL5'0'               LARGEST BALANCE
+CLCNT    DC    PL5'0'               CLIENT COUNT
+NBAL     DC    PL5'0'               NEGATIVE BALANCE ENTRIES
+*************************END TALLY*******************************       
+         END   PROG6                                                    00337800
+/*                                                                      00338000
+//FT05F001  DD DSN=KC02314.SUMMER14.CSCI360.HW6DATA,DISP=SHR            00340000
+//FT06F001  DD SYSOUT=*                                                 00379000
+//                                                                      00440000 
