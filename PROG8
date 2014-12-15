@@ -1,0 +1,413 @@
+//KC03O10M JOB ,'MATTHEW ROWE' ,MSGCLASS=H                              
+//STEP1  EXEC  PGM=ASSIST                                               
+//STEPLIB  DD DSN=KC02293.ASSIST.LOADLIB,DISP=SHR                       
+//SYSPRINT DD SYSOUT=*                                                  
+//SYSIN    DD *                                                         
+**********************************************************************  
+* ASSIGNMENT 8                                                          
+* NAME: MATTHEW ROWE                                                    
+* FUNCTION: USE INTERNAL SUBROUTINES TO LOAD A TABLE READ FROM FILE     
+*           PRINT THE VALUES IN LINES OF 5 AND THEN PRINT ALL EVEN      
+*           ENTRIES IN THE SAME FASHION                                 
+*                                                                       
+* INPUT: FT05F001                                                       
+* OUTPUT: STDOUT INDIVIDUAL PAY RECORDS PER EMPLOYEE AS WELL AS TOTALS  
+* ENTRY CONDS: NONE                                                     
+* EXIT CONDS: NONE                                                      
+* REGISTERS: R12--BASE REGISTER                                         
+*            R1---PARAMETER LISTS FOR SUBROUTINES                       
+*            R14--LINK BACK TO MAIN FORWARD POINTER                     
+*            R15--LINK TO SUB FRORWARD POINTER                          
+* PSEUDOCODE: <1> LOAD PARAMS AND BRANCH TO BUILD SUB                   
+*             <2> LOAD PARAMS AND BRANCH TO PRINT SUB                   
+*             <3> LOAD PARAMS AND BRANCH TO SORT  SUB                   
+*             <4> LOAD PARAMS AND BRANCH TO PRINT SUB                   
+*                 FOR SORTED, MULTIPLES OF 6;5; AND 4                   
+*********************************************************************** 
+         TITLE 'MATTHEW ROWE, CSCI 360, PROGRAM6'                       
+         SPACE 3                                                        
+PROG8    CSECT                                                          
+         STM   14,12,12(13)                                             
+         LR    12,15                                                    
+         USING PROG8,12                                                 
+         LA    14,MAINSAVE                                              
+         ST    14,8(13)                                                 
+         ST    13,4(14)                                                 
+         LR    13,14                                                    
+*********CALL BUILD**************************************************** 
+         LA    1,BPARMS                                                 
+         L     15,=V(BUILD)                                             
+         BALR  14,15  
+         XDUMP TABLE,340
+*********PRINT *******************************************************
+         LA    1,PPRAM                                                 
+         L     15,=V(PRINT)                                             
+         BALR  14,15
+         L     13,4(13)
+         LM    14,12,12(13)
+         BR    14
+*************CONSTANTS/PARAM LISTS/LABELS*****************************        
+         EJECT                                                          
+         SPACE 3                                                        
+         LTORG                                                          
+MAINSAVE DS    18F                                                      
+         ORG   PROG8+(*-PROG8+31)/32*32                                 
+TABLE    DS    2720C                TABLE              
+ENDTBLE  DS    0H                                                       
+LASTREC  DS    F                    POINTER FOR LAST RECORD ENTERED     
+BPARMS   DC    A(TABLE)             BUILD PARAMETERS                    
+         DC    A(LASTREC)
+PPRAM    DC    A(TABLE)             PRINT PARAMETERS
+         DC    A(LASTREC)
+******************TABLE ENTRY DESCRIPTION DSECT************************
+ENTRY    DSECT
+LNAME    DS    10C
+FNAME    DS    10C
+RDATE    DS    2C                   RENEWAL DATE
+PASS     DS    8C
+ID       DS    4C
+*************BUILD SUBROUTINE******************************************        
+* FUNCTION: FILL TABLE WITH VALUES FROM FILE                            
+* REGISTERS: R1---PARAM LIST                                            
+*            R2---RESERVED FOR TRT                                      
+*            R3---TABLE POINTER                       
+*            R4---EOT POINTER(LASTREC)                                         
+*            R5---LENGTH OF ENTRY
+*            R9---AS ADDRESS OF BLANK AFTER STRING
+*            R10--TEMP STORAGE FOR CVB
+*            R11--TABLE ADDRESS SAVE POINT
+*            R14--RETURN MAIN                                           
+* PSUEDO CODE:<1>SAVE REGISTERS AND LOAD PARAM LIST                     
+*             <2>ENTER LOOP1 ,READ CARD, CHECK FOR EOF                  
+*             <3>READ AND STORE VALUES                                  
+*             <4>MULTIPLY BALANCE BY -1 IF NECESSARY                    
+*                LOOP BACK TO <2> TIL EOF/TABLE FULL                    
+**********************************************************************        
+         EJECT                                                          
+         SPACE 3                                                        
+BUILD    CSECT                                                        
+******************ENTRY LINKAGE***************************************
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    12,15                LOAD PARAM LIST                     
+         USING BUILD,12                                                 
+         LA    14,BUILDST                                               
+         ST    14,8(13)                                                 
+         ST    13,4(14)                                                 
+         LR    13,14 
+******************SUBROUTINE BODY*************************************
+         LM    3,4,0(1)
+         LA    5,CARD
+         SR    8,8
+         LR    11,2                 SAVE START OF TABLE 
+LOOPT    XREAD CARD,80              READ IN FILE
+         BC    B'0100',LOOPE        CHECK FOR END OF LOOP AND BRANCH    
+         C     8,=F'80'             CHECK FOR EOT                       
+         BC    B'1000',LOOPE
+******************LAST NAME*******************************************         
+         TRT   0(80,5),TRCHAR       CHECK FOR NON BLANK
+         BC    B'1010',LOOPT        
+         LR    6,1                  STORE NON BLANK
+         TRT   0(80,1),TRBLANK      SEARCH FOR BLANK AFTER CHAR
+         LR    7,1                  STORE ADDRESS
+         LR    9,7                  SAVE BLANK ADDRESS FOR NEX TRT
+         SR    7,6                  GET LENGTH
+         BCTR  7,0                  ADJUST LENGTH
+         EX    7,LMVC               LAST NAME
+         TR    0(1,3),LTOU
+         TR    1(9,3),UTOL
+         LA    3,10(0,3)            ADVANCE POINTER 
+         SR    7,7                  CLEAR REGISTERS 
+         SR    6,6
+******************FIRST NAME*******************************************         
+         TRT   0(80,9),TRCHAR       CHECK FOR NON BLANK
+         BC    B'1010',LOOPT        
+         LR    6,1                  STORE NON BLANK
+         TRT   0(80,1),TRBLANK      SEARCH FOR BLANK AFTER CHAR
+         LR    7,1                  STORE ADDRESS
+         LR    9,7                  SAVE BLANK ADDRESS FOR NEX TRT
+         SR    7,6                  GET LENGTH
+         BCTR  7,0                  ADJUST LENGTH
+         EX    7,LMVC               FIRST NAME
+         TR    0(1,3),LTOU
+         TR    1(9,3),UTOL
+         LA    3,10(0,3)            ADVANCE POINTER 
+         SR    7,7                  CLEAR REGISTERS 
+         SR    6,6
+******************PASSWORD ********************************************         
+         TRT   0(80,9),TRCHAR       CHECK FOR NON BLANK
+         BC    B'1010',LOOPT        
+         LR    6,1                  STORE NON BLANK
+         TRT   0(80,1),TRBLANK      SEARCH FOR BLANK AFTER CHAR
+         LR    7,1                  STORE ADDRESS
+         LR    9,7                  SAVE BLANK ADDRESS FOR NEX TRT
+         SR    7,6                  GET LENGTH
+         BCTR  7,0                  ADJUST LENGTH
+         EX    7,PMVC               PASSWORD
+         SR    7,7                  CLEAR REGISTERS 
+         SR    6,6
+******************ID **************************************************         
+         TRT   0(80,9),TRCHAR       CHECK FOR NON BLANK
+         BC    B'1010',LOOPT        
+         LR    6,1                  STORE NON BLANK
+         TRT   0(80,1),TRBLANK      SEARCH FOR BLANK AFTER CHAR
+         LR    7,1                  STORE ADDRESS
+         LR    9,7                  SAVE BLANK ADDRESS FOR NEX TRT
+         SR    7,6                  GET LENGTH
+         BCTR  7,0                  ADJUST LENGTH
+         EX    7,IDMVC              ID
+         PACK  IDNUM(8),IDNUM(8)    PACK ID NUMBER
+         CVB   10,IDNUM             CONVERT TO BINARY
+         ST    10,TEMP              PLACE IN TEMP STORAGE
+         XC    0(4,3),TEMP
+         XC    4(4,3),TEMP
+         LA    3,8(0,3)             ADVANCE POINTER 
+         EX    7,IDSTR              STORE IN TABLE AS BINARY 
+         LA    3,4(0,3)             ADVANCE TABLE POINTER
+         SR    7,7                  CLEAR REGISTERS 
+         SR    6,6
+******************RENEWAL DATE*****************************************         
+         PACK  DTEMP(8),IDATE(4)       GET THE YEAR
+         SP    DTEMP(8),=PL3'1920'     SUBTRACT OFFSET
+         CVB   7,DTEMP                 STORE IN R7
+*
+         PACK  DTEMP(8),IDATE+4(2)     GET THE DAY (1 - 31)
+         CVB   6,DTEMP                 R6 HAS DAY
+         SLL   6,7                     SHIFT DAY BITS LEFT 7
+         OR    7,6                     OR DAY AND YEAR TOGETHER
+*
+         PACK  DTEMP(8),IDATE+6(2)     GET THE MONTH (1 - 12)
+         CVB   6,DTEMP                 R6 HAS MONTH
+         SLL   6,12                    SHIFT MONTH BITS LEFT 12
+         OR    7,6         
+*
+         STH   7,0(3)                  STORE DATE IN TABLE
+         LA    3,2(0,3)
+         A     8,=F'1'
+         B     LOOPT
+LOOPE    ST    3,0(4)      
+******************EXIT LINKAGE****************************************
+         L     13,4(13)                                                 
+         LM    14,12,12(13)         EXIT LINKAGE                        
+         BR    14                   BRANCH TO MAIN                      
+         LTORG
+******************SUBROUTINE CONSTANTS********************************
+BUILDST  DS    18F                  BUILD MAIN STORAGE  
+DTEMP    DS    D    
+CARD     DS    80C                  FOR READING RECORDS
+IDNUM    DS    D                    TEMP STORAGE FOR ID FROM CARD
+TEMP     DS    F                    FOR PLACING ID INTO TABLE
+PTEMP    DS    8C
+TRCHAR   DC    256X'FF'
+         ORG   TRCHAR+X'40'
+         DC    X'00'
+         ORG
+TRBLANK  DC    256X'00'
+         ORG   TRBLANK+X'40'
+         DC    X'FF'
+         ORG
+TRDIGIT  DC    256X'00'
+         ORG   TRDIGIT+X'F0'
+         DC    10X'FF'
+         ORG
+         ORG   CARD+45
+IDATE    DC    CL8' '
+         ORG
+******************CONVERT TABLES FOR UPPER TO LOWER/VICE VERSA*******
+UTOL     DC    XL16'000102030405060708090A0B0C0D0E0F'  CHANGES
+         DC    XL16'101112131415161718191A1B1C1D1E1F'  UPPER CASE
+         DC    XL16'202122232425262728292A2B2C2D2E2F'  TO
+         DC    XL16'303132333435363738393A3B3C3D3E3F'  LOWER CASE
+         DC    XL16'404142434445464748494A4B4C4D4E4F'
+         DC    XL16'505152535455565758595A5B5C5D5E5F'
+         DC    XL16'606162636465666768696A6B6C6D6E6F'
+         DC    XL16'707172737475767778797A7B7C7D7E7F'
+         DC    XL16'808182838485868788898A8B8C8D8E8F'
+         DC    XL16'909192939495969898999A9B9C9D9E9F'
+         DC    XL16'A0A1A2A3A4A5A6A7A8A9AAABACADAEAF'
+         DC    XL16'B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF'
+         DC    XL16'C0818283848586878889CACBCCCDCECF'
+         DC    XL16'D0919293949596979899DADBDCDDDEDF'
+         DC    XL16'E0E1A2A3A4A5A6A7A8A9EAEBECEDEEEF'
+         DC    XL16'F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF'
+*
+LTOU     DC    XL16'000102030405060708090A0B0C0D0E0F'  CHANGES
+         DC    XL16'101112131415161718191A1B1C1D1E1F'  LOWER CASE
+         DC    XL16'202122232425262728292A2B2C2D2E2F'  TO
+         DC    XL16'303132333435363738393A3B3C3D3E3F'  UPPERCASE
+         DC    XL16'404142434445464748494A4B4C4D4E4F'
+         DC    XL16'505152535455565758595A5B5C5D5E5F'
+         DC    XL16'606162636465666768696A6B6C6D6E6F'
+         DC    XL16'707172737475767778797A7B7C7D7E7F'
+         DC    XL16'80C1C2C3C4C5C6C7C8C98A8B8C8D8E8F'
+         DC    XL16'90D1D2D3D4D5D6D7D8D99A9B9C9D9E9F'
+         DC    XL16'A0A1E2E3E4E5E6E7E8E9AAABACADAEAF'
+         DC    XL16'B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF'
+         DC    XL16'C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF'
+         DC    XL16'D0D1D2D3D4D5D6D7D8D9DADBDCDDDEDF'
+         DC    XL16'E0E1E2E3E4E5E6E7E8E9EAEBECEDEEEF'
+         DC    XL16'F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF'
+*********************************************************************
+FMVC     MVC   0(10,3),0(6)         MVC FOR FIRST NAME    
+LMVC     MVC   0(10,3),0(6)         MVC FOR LAST NAME
+PMVC     MVC   0(8,3),0(6)          MVC FOR PASSWORD
+IDMVC    MVC   IDNUM(8),0(6)        MVC FOR PULLING ID FROM CARD 
+IDSTR    MVC   0(4,3),TEMP          MVC FOR STORING PACKED ID
+*************PRINT SUBROUTINE*********************************      
+* FUNCTION: PRINT EVEN VALS OF TABLE, 6 PER LINE                        
+* REGISTERS: R1---PARAM LIST                                            
+*            R2---TABLE POITNER                                         
+*            R3---EOT POINTER/LAST ENTRY POINTER                        
+*            R4---HEADER                                           
+*            R5---PAGE NUMBER                                            
+*            R7---VALUE PER LINE COUNTER                                
+*            R8&9-TABLE VALUE IN 32 BIT FORM FOR DIVISION               
+*            R10--TABLE VALUE STORED FOR XPRNT                          
+* PSUEDO CODE:<1>SAVE REGISTERS, LOAD PARAM LIST, INTIALIZE COUNTERS    
+*             <2>ENTER LOOP ,READ TABLE, CHECK FOR EOT                  
+*             <3>XDECI VAL,INCREMENT TABLE, DIVIDE CHECK REM            
+*             <4>IF 0 XDECO TO VAR1 & CONT OTHER WISE LOOP TO <2>       
+*             <5>REPEAT PREVIOUS STEPS 2 &3 UNTIL 7 IS EQUAL TO H       
+*                THEN BRANCH TO XPRNT, RESET COUNTER LOOP TO TOP        
+*             <6>ONCE ALL VALUES CHECKED BRANCH TO END AND PRINT        
+*                REMAINING VALUES                                       
+*             <7>RESTORE REGISTERS AND BRANCH BACK TO MAIN              
+****************************************************************        
+         EJECT                                                          
+         SPACE 3
+******************ENTRY LINKAGE*********************************
+PRINT    CSECT                                                          
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    12,15                ENTRY LINKAGE                       
+         USING PRINT,12                                                 
+         LA    14,PRINTST           LOAD STORAGE AREA                   
+         ST    14,8(13)             ADDRESS HERE                        
+         ST    13,4(14)             ADDRESS BACK                        
+         LR    13,14                                            
+******************SUBROUTINE BODY******************************
+         LM    2,3,0(1)
+         L     3,0(0,3)
+         SR    7,7
+         XPRNT HEAD,75              PRINT HEADER                        
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1                                       
+         XPRNT FILLER,80            PRINT COLUMN TITLES                 
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1                                       
+LOOPTOP  CR    2,3                  TEST FOR EOT
+         BC    B'1000',LOOPBOT      IF TRUE END
+         C     7,=F'40'
+         BE    NEWPAGE
+         MVC   FPRINT(10),10(2)   
+         MVC   LPRINT(10),0(2)    
+         MVC   PSTEMP(8),20(2)
+         MVC   TEMPR(4),28(2)
+         XC    PSTEMP(4),TEMPR
+         XC    PSTEMP+4(4),TEMPR
+         L     8,TEMPR              LOAD ID VAL 
+         CVD   8,IDTEMP             CONVERT
+         MVC   PPRINT(8),PSTEMP
+         MVC   IDTEMP(5),IDTEMP+3
+         MVC   IDPRINT(10),=XL10'40212020202020202020'
+         EDMK  IDPRINT(10),IDTEMP
+*
+         LH    9,32(2)                 LOAD COMPRESSED DATE
+         LR    6,9                     COPY DATE
+         N     6,=X'0000007F'          GET YEAR IN R6
+         CVD   6,YTEMP
+         AP    YTEMP,=P'1920'          ADD DATE OFFSET
+         SRP   YTEMP,2,0               SHIFT YEAR 2 DIGITS
+         ZAP   RDTEMP(8),YTEMP         ADD TO RESULT
+*
+         LR    6,9   
+         N     6,=X'0000F000'          ISOLATE BITS
+         SRL   6,12                    SHIFT TO FAR RIGHT
+         CVD   6,YTEMP
+         AP    RDTEMP,YTEMP            ADD TO RESULT
+*
+         SRP   RDTEMP,2,0               SHIFT RESULT
+         N     9,=X'00000F80'          ISOLATE BITS     
+         SRL   9,7                     SHIFT FAR RIGHT
+         CVD   9,YTEMP
+         AP    RDTEMP,YTEMP             ADD TO RESULT
+*
+         MVC   RDPRINT(12),RDPAT       SET PATTERN
+         EDMK  RDPRINT(12),RDTEMP+3
+*         
+         XPRNT LINE,83
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1
+*
+         LA    2,34(0,2)            ADVANCE TABLE POINTER
+         A     7,=F'1'
+         B     LOOPTOP
+NEWPAGE  DS    0H                                                       
+         SR    7,7                  RESET COUNTER                       
+         XPRNT HEAD,75                                                 
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE
+         XPRNT FILLER,80            PRINT COLUMN TITLES                 
+         MVI   LINE+1,C' '                                              
+         MVC   LINE+2(118),LINE+1                                       
+         B     LOOPTOP              START NEXT LINE                     
+LOOPBOT  DS    0H
+******************EXIT LINKAGE*********************************
+         L     13,4(13)                                                 
+         LM    14,12,12(13)         EXIT LINKAGE                        
+         BR    14                   BRANCH TO MAIN                      
+         LTORG
+******************PRINT CONSTANTS *****************************
+PRINTST  DS    18F 
+PTMP     DS    2P
+TEMPR    DS    F
+YTEMP    DS    D
+IDTEMP   DS    D
+PSTEMP   DS    F
+RDTEMP   DS    D
+RDPAT    DC    XL12'402020202020612020612020'
+******************DATA LINE TEMPLATE*************************** 
+LINE     DC    C' '                                                     
+         DC    120C' '
+         ORG   LINE+2
+FPRINT   DC    10C' '                                                   
+         ORG   LINE+20                                                    
+LPRINT   DC    10C' '                                                   
+         ORG   LINE+34                                                    
+PPRINT   DC    8C' '                                                   
+         ORG   LINE+50                                                    
+IDPRINT  DC    10C' '                                                    
+         ORG   LINE+62                                                    
+RDPRINT  DC    12C' '               
+         ORG   
+******************DATA LINE = 83 ******************************
+******************FILL LINE TEMPLATE***************************
+FILLER   DC    C'-'                                                     
+         DC    120C' '
+         ORG   FILLER+2                                                   
+         DC    CL12'FIRST NAME'                                         
+         ORG   FILLER+20                                                    
+         DC    CL10'LAST NAME '                                         
+         ORG   FILLER+34                                                   
+         DC    CL12'PASSWORD  '                                       
+         ORG   FILLER+52                                                    
+         DC    CL9'ID NUMBER'                                            
+         ORG   FILLER+63                                                   
+         DC    CL12'RENEWAL DATE'                                         
+         ORG   FILLER+76                                                     
+         DC    CL7' '                                           
+         ORG 
+*********************  FILLER =94C*****************************
+******************HEADER 1************************************
+HEAD     DC    C'1'
+         DC    CL120' '
+         ORG   HEAD+26
+         DC    22C'Greek Myth Player Data'
+         ORG   HEAD+48
+         DC    72C' '
+         ORG
+******************END PRINT***********************************
+******************PRINT CONSTANTS *****************************
+         END   PROG8                                                    
+/*                                                                      
+//FT05F001  DD DSN=KC02314.SUMMER14.CSCI360.HW8DATA,DISP=SHR            
+//FT06F001  DD SYSOUT=*                                                 
+//  
