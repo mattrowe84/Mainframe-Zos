@@ -1,0 +1,80 @@
+//KC03O10M JOB ,'MATTHEW ROWE' ,MSGCLASS=H                              00010000
+//STEP1  EXEC  PGM=ASSIST                                               00020000
+//STEPLIB  DD DSN=KC02293.ASSIST.LOADLIB,DISP=SHR                       00030000
+//SYSPRINT DD SYSOUT=*                                                  00040000
+//SYSIN    DD *                                                         00050000
+**********************************************************************  00060000
+* ASSIGNMENT 2                                                          00070000
+* NAME: MATTHEW ROWE                                                    00080000
+* FUNCTION: READ IN DATA AND ASSIGN TO SEPERATE VARIABLES               00090000
+*           THEN ADD EACH OF THE VARIABLES AFTER EACH LINE HAS          00100000
+*           BEEN READ AND AT THE EOF PRINT OUT THE TOTALS               00110000
+* INPUT: FT05F001                                                       00120000
+* OUTPUT: STDOUT RECORDS FOR X,Y,Z,TOTAL RECORDS READ,& TOTAL RESULTS   00130000
+* ENTRY CONDS: NONE                                                     00140000
+* EXIT CONDS: NONE                                                      00150000
+* REGISTERS: R15--BASE REGISTER                                         00160000
+*            R1--USED BY XDECI                                          00170000
+*            R2--STORE FOR X                                            00180000
+*            R3--STORE FOR Y                                            00190000
+*            R4--STORE FOR X                                            00200000
+*            R5--COUNTER                                                00201000
+*            R6--TOTAL                                                  00202000
+* PSEUDOCODE: <1> LOOP STRUCTURE                                        00210000
+*             <2> READS IN 1ST LINE AND ASSIGNS VALUES TO X,Y,Z         00220000
+*             <3> PERFORMS ARITHMATIC AND ADDS TO TOTAL                 00230000
+*             <4> INCREMENTS COUNTER AND LOOPS BACK TO BEGINNING        00240000
+*             <5> AT EOF BRANCH OUT OF LOOP AND XPRNT TOTAL VALUE       00250000
+*********************************************************************** 00270000
+MAIN     CSECT                                                          00280000
+         USING MAIN,15                                                  00290000
+         SR    5,5              SETTING COUNTER TO ZERO                 00300000
+         SR    6,6              INITIALIZING TOTAL                      00301000
+         XREAD CARD,80          READ IN FIRST CARD                      00301100
+LOOPTOP  DS    0H               LOOP TOP                                00301200
+         BC    B'0100',LOOPBOT  TEST FOR EOF                            00301300
+         XDECI 2,CARD           X ASSIGNED TO R2                        00302000
+         XDECI 3,0(1)           Y ASSIGNED TO R3                        00303000
+         XDECI 4,0(1)           Z ASSIGNED TO R4                        00304000
+         XDECO 2,XVAL           PREP X FOR XPRNT B4 OVERWRITTEN BY SUM  00304200
+         XDECO 3,YVAL           PREP Y FOR XPRNT                        00304300
+         XDECO 4,ZVAL           PREP Z FOR XPRNT                        00304400
+         AR    2,3              ADDING X AND Y, STORED IN R2            00305000
+         SR    2,4              SUBTRACTING Z FROM X&Y STORED IN R2     00306000
+         AR    6,2              ADDING CONTENTS TO TOTAL IN R6          00307000
+         A     5,=F'1'          INCREMENT COUNTER                       00307100
+         XDECO 2,SUM            PREPPING SUM VALUE FOR XPRNT            00308000
+         XPRNT FORMX,80         PRINT ALL XDECO COMMANDS IN LOOP        00309000
+         XREAD CARD,80          READ NEXT CARD                          00310000
+         BC    B'1111',LOOPTOP  GOTO BEGINNING OF LOOP                  00311000
+LOOPBOT  DS    0H               END/BOTTOM OF LOOP                      00320000
+         XDECO 5,LINE           PREP LINE COUNTER FOR FINAL XPRNT       00320200
+         XDECO 6,TOTAL          PREP TOTAL SUM FOR XPRNT                00320300
+         XPRNT FORMAT,54        PRINT FINAL TOTALS                      00321000
+         BR    14               EXIT                                    00370200
+CARD     DS    CL80          SETTING CARD INPUT RANGE                   00370600
+FORMX    DC    CL8' X= '                                                00370800
+XVAL     DS    12C                                                      00371400
+         DC    CL8' Y= '                                                00371500
+YVAL     DS    12C                                                      00372000
+         DC    CL8' Z= '                                                00372100
+ZVAL     DS    12C                                                      00373000
+         DC    CL8' RESULT= '                                           00373100
+SUM      DS    12C                                                      00373200
+FORMAT   DC    CL18' NUMBER OF LINES= '                                 00373300
+LINE     DS    12C                                                      00373400
+         DC    CL12' TOTAL SUM= '                                       00373500
+TOTAL    DS    12C                                                      00374000
+         END   MAIN                                                     00375000
+/*                                                                      00376000
+//FT05F001  DD *                                                        00377000
+163   529   280                                                         00378000
+436   839   571                                                         00379000
+051   843   947                                                         00380000
+190   057   275                                                         00390000
+299   667   419                                                         00400000
+818   361   655                                                         00410000
+475   048   111                                                         00420000
+/*                                                                      00430000
+//FT06F001     DD SYSOUT=*                                              00440000
+//                                                                      00450000
