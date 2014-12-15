@@ -1,0 +1,76 @@
+//KC03Q15 JOB  ,'MATTHEW ROWE',MSGCLASS=H
+//*
+//****************************************************************
+//*   JOB TASKS: JSTEP01 - DELETE/REMOVE DATA SETS NAMED
+//*                        TESTSEQ AND TESTPDS FOUND IN 
+//*                        NODE KC03Q15.CSCI465
+//*
+//*              JSTEP02 - ALLOCATE NEW FLAT FILE NAMED TESTSEQ
+//*                        IN NODE KCO3Q15.CSCI465 WITH 35-BYTE
+//*                        FIXED LENGTH RECORDS, BLOCKING FACTOR
+//*                        OF 8, 4 TRACKS PRIMARY, 2 TRACKS 
+//*                        SECODARY, AND DELETES IF ABEND.
+//*                        COND=(4,LT,JSTEP01)
+//*
+//*              JSTEP03 - ALLOCATES NEW PDS NAMED TESTPDS
+//*                        IN NODE KCO3Q15.CSCI465 WITH 15-BYTE
+//*                        FIXED LENGTH RECORDS, BLOCKING FACTOR
+//*                        OF 4, 1 CYLINDER PRIMARY, 2 CYLINDER
+//*                        SECODARY, AND 3 DIRECTORY BLOCKS.
+//*                        DELETES IF ABEND.  COND=(0,LT)
+//****************************************************************
+//*
+//JSTEP01 EXEC PGM=IEFBR14
+//****************************************************************
+//*              JSTEP01 - DELETE/REMOVE DATA SETS NAMED
+//*                        TESTSEQ AND TESTPDS FOUND IN 
+//*                        NODE KC03Q15.CSCI465
+//*
+//*              DD1 -     DELETES/REMOVES DATA SET TESTSQ 
+//*
+//*              DD2 -     DELETES/REMOVES DATA SET TESTPDS    
+//****************************************************************
+//*
+//DD1     DD   DSN=KC03Q15.CSCI465.TESTSEQ,DISP=(MOD,DELETE),
+//             SPACE=(TRK,(4,2)),
+//             DCB=(LRECL=35,BLKSIZE=280,RECFM=FB,DSORG=PS)
+//*
+//DD2     DD   DSN=KC03Q15.CSCI465.TESTPDS,DISP=(MOD,DELETE),
+//             SPACE=(CYL,(1,2,3)),
+//             DCB=(LRECL=15,BLKSIZE=60,RECFM=FB,DSORG=PO)
+//*
+//JSTEP02 EXEC PGM=IEFBR14,COND=(4,LT,JSTEP01)
+//*
+//****************************************************************
+//*              JSTEP02 - ALLOCATE NEW FLAT FILE NAMED TESTSEQ
+//*                        IN NODE KCO3Q15.CSCI465 WITH 35-BYTE
+//*                        FIXED LENGTH RECORDS, BLOCKING FACTOR
+//*                        OF 8, 4 TRACKS PRIMARY, 2 TRACKS 
+//*                        SECODARY, AND DELETES IF ABEND.
+//*                        COND=(4,LT,JSTEP01)
+//*
+//*              DD3 -     CREATES DATA SET TESTSEQ WITH 
+//*                        AFFORMENTIONED DIMENSIONS ABOVE
+//****************************************************************
+//*
+//DD3     DD   DSN=KC03Q15.CSCI465.TESTSEQ,DISP=(NEW,KEEP,DELETE),
+//             SPACE=(TRK,(4,2)),
+//             DCB=(LRECL=35,BLKSIZE=280,RECFM=FB,DSORG=PS)
+//*
+//JSTEP03 EXEC PGM=IEFBR14,COND=(0,LT)
+//*
+//****************************************************************
+//*              JSTEP03 - ALLOCATES NEW PDS NAMED TESTPDS
+//*                        IN NODE KCO3Q15.CSCI465 WITH 15-BYTE
+//*                        FIXED LENGTH RECORDS, BLOCKING FACTOR
+//*                        OF 4, 1 CYLINDER PRIMARY, 2 CYLINDER
+//*                        SECODARY, AND 3 DIRECTORY BLOCKS.
+//*                        DELETES IF ABEND.  COND=(0,LT)
+//*
+//*              DD4 -     CREATES DATA SET TESTPDS WITH 
+//*                        AFFORMENTIONED DIMENSIONS ABOVE
+//****************************************************************
+//*
+//DD4     DD   DSN=KC03Q15.CSCI465.TESTPDS,DISP=(NEW,KEEP,DELETE),
+//             SPACE=(CYL,(1,2,3)),
+//             DCB=(LRECL=15,BLKSIZE=60,RECFM=FB,DSORG=PO)
