@@ -1,0 +1,171 @@
+//KC03O10M JOB ,'MATTHEW ROWE' ,MSGCLASS=H                              00010000
+//STEP1  EXEC  PGM=ASSIST                                               00020000
+//STEPLIB  DD DSN=KC02293.ASSIST.LOADLIB,DISP=SHR                       00030000
+//SYSPRINT DD SYSOUT=*                                                  00040000
+//SYSIN    DD *                                                         00050000
+**********************************************************************  00060000
+* ASSIGNMENT 3                                                          00070000
+* NAME: MATTHEW ROWE                                                    00080000
+* FUNCTION: READ IN DATA AND ASSIGN TO FILL TABLE AND PRODUCE           00090000
+*           CALCULATIONS FOR PAY ON HOURS WORKED AND THEN PROVIDE       00100000
+*           TOTAL RECORDS, PAYROLL, NUMBER OF OVERTIME RECORDS, &       00110000
+*           AVERAGE PAY PER EMPLOYEE                                    00111000
+* INPUT: FT05F001                                                       00120000
+* OUTPUT: STDOUT INDIVIDUAL PAY RECORDS PER EMPLOYEE AS WELL AS TOTALS  00130001
+* ENTRY CONDS: NONE                                                     00140000
+* EXIT CONDS: NONE                                                      00150000
+* REGISTERS: R15--BASE REGISTER                                         00160000
+*            R1--USED BY XDECI                                          00170000
+*            R2--EMPLOYEE ID                                            00180002
+*            R4-5--HOURLY WAGE/GROSS/NET GROSS AND NET FROM AR AND SR   00190046
+*            R3--HOURS WORKED                                           00200003
+*            R7--DEDUCTIONS                                             00201004
+*            R6--BONUS                                                  00202002
+*            R8-9--TESTING TO SEE IF ROUNDUP AVG                        00202160
+*            R12-EMPLOYEE/ENTRY COUNTER                                 00203004
+*            R10-11-AVERAGE NET                                         00204046
+*            R13-COUNTER FOR OT ENTRIES                                 00205004
+* PSEUDOCODE: <1> PRINT HEADERS                                         00210063
+*             <2> USE LOOP TO READ DATA AND ASSIGN TO REGISTERS         00220063
+*             <3> IN LOOP PRINT INFO AND CALCULATE GROSS AND NET        00230063
+*             <4> BRANCH IF HOURS WORKED > 40                           00240063
+*             <5> PRINT COUNTERS OF EMPLOYEES                           00250063
+*             <6> CALCULATE AVERATE NET AND CHECK IF NEED ROUND         00260063
+*             <7> PRINT AVERAGE NET AND OT COUNTER                      00261063
+*             <8> EXIT MAIN                                             00262063
+*********************************************************************** 00270000
+         TITLE 'MATTHEW ROWE, CSCI 360, PROGRAM3'                       00271011
+         SPACE 3                                                        00272011
+MAIN     CSECT                                                          00280000
+         USING MAIN,15                                                  00290000
+         SR    12,12            SETTING COUNTER TO ZERO                 00300037
+         SR    10,10            CLEARING R10 FOR DR COMMAND REMAINDER   00300141
+         SR    11,11            INITIALIZING AVERAGE NET                00301002
+         SR    13,13            INITIALIZING OT COUNTER TO ZERO         00301137
+         XPRNT =CL37'       PAYROLL REPORT -- WIDGETS-R-US',37          00301236
+         XPRNT FORMY,96                                                 00301336
+         XPRNT FORMZ,98                                                 00301429
+         XREAD CARD,80          READ IN FIRST CARD                      00301500
+         EJECT                                                          00301611
+*******************TOP OF LOOP*********************************         00301709
+         SPACE 2                                                        00301811
+LOOPTOP  DS    0H               LOOP TOP                                00301900
+         BC    B'0100',LOOPBOT  TEST FOR EOF                            00302000
+         XDECI 2,CARD           ID ASSIGNED TO R2                       00302102
+         XDECI 5,0(1)           HOURLY WAGE ASSIGNED TO R5              00303004
+         XDECI 3,0(1)           HOURS WORKED ASSIGNED TO R3             00304004
+         XDECI 7,0(1)           DEDUCTIONS ASSIGNED TO R7               00304106
+         XDECI 6,0(1)           BONUS ASSIGNED TO R6                    00304202
+         XDECO 2,EMPID          PREP ID FOR XPRNT                       00304302
+         XDECO 5,HOURLY         PREP HOURLY WAGE FOR XPRNT              00304404
+         XDECO 3,WORK           PREP HOURS WORKED FOR XPRNT             00304504
+         XDECO 7,DEDUCT         PREP DEDUCTION FOR XPRNT                00304604
+         XDECO 6,BONUS          PREP BONUS FOR XPRNT                    00304702
+         C     3,=F'40'         COMPARE HOURS WORK FOR OT               00304867
+         BC    B'0010',OTCALC   BARNCH FOR OT CALCULATIONS              00304908
+         MR    4,3              GROSS CALCULATIONS                      00305008
+         XDECO 5,GROSS                                                  00305127
+         AR    5,6              NET PT1:GROSS + BONUS                   00306008
+         SR    5,7              NET PT2:TOTAL - DEDUCTIONS              00307008
+         AR    11,5             ADDING NET TO TOTAL AVERAGE             00307108
+         A     12,=F'1'         INCREMENT COUNTER                       00307204
+         XDECO 5,NET                                                    00307308
+         XPRNT DATA,100         PRINT ALL XDECO                         00309028
+         XREAD CARD,80          READ NEXT CARD                          00310000
+         BC    B'1111',LOOPTOP  GOTO BEGINNING OF LOOP                  00311000
+LOOPBOT  DS    0H               END/BOTTOM OF LOOP                      00320000
+*******************LOOP BOTTOM*********************************         00320107
+         EJECT                                                          00320211
+*******************PRINTOUT OF TOTALS AND EXIT BRANCH**********         00320707
+         SPACE 2                                                        00320811
+         DR    10,12            FIND AVERAGE NET                        00320904
+         LR    9,10             LOAD REMAINDER FOR COMPARISON           00321360
+         M     8,=F'2'          MULTIPLY REMAINDER BY 2                 00321460
+         CR    9,12             NOW COMPARE REMAINDER AND DIVISOR       00321560
+         BC    B'0010',ADD1     BRANCH IF REMAINDER IS GREATER          00321660
+         XDECO 12,LINE          PREP LINE COUNTER FOR FINAL XPRNT       00321707
+         XDECO 11,AVG           PREP AVERAGE FOR XPRNT                  00321808
+         XDECO 13,TOTAL         OT COUNTER PREP FOR XPRNT               00321907
+         XPRNT 631(0,15),39     PRINT EMPLOYEE COUNT=LITERAL USE        00322071
+         XPRNT AVGNET,46        PRINT AVERAGE NET PAY                   00323058
+         XPRNT OTEMP,55         PRINT OT EMPLOYEE COUNT                 00324059
+         XDUMP                                                          00325036
+         BR    14                                                       00370233
+         EJECT                                                          00370311
+*******************OVERTIME SUBROUTINE*************************         00370408
+         SPACE 2                                                        00370611
+OTCALC   DS    0H                                                       00370708
+         M     2,=F'2'          MULTIPLY HOURS WORKED BY 2              00370808
+         S     3,=F'40'         SUBTRACT 40 FROM HOURS WORKED           00370968
+         MR    4,3              RATE * HOURS ADJUSTED = GROSS           00371008
+         XDECO 5,GROSS                                                  00371127
+         AR    5,6              NET PT1:GROSS + BONUS                   00371208
+         SR    5,7              NET PT2:GROSS - DEDUCTIONS              00371308
+         AR    11,5             ADD NET TO TOTAL FOR AVERAGE            00371408
+         A     13,=F'1'         INCREMENT OT COUNTER                    00371508
+         A     12,=F'1'         INCRIMENT NORMAL COUNTER                00371638
+         XDECO 5,NET            PREP NET FOR XPRNT                      00371708
+         XPRNT DATA,100         PRINT ALL XDECO'S                       00371828
+         XREAD CARD,80          READ NEXT CARD                          00371908
+         BC    B'1111',LOOPTOP  RETURN BACK TO LOOP                     00372008
+         EJECT                                                          00373011
+*******************ADD1 SUBROUTINE*****************************         00373160
+         SPACE 2                                                        00373260
+ADD1     DS    0H                                                       00373361
+         A     11,=F'1'         ADD 1 TO AVERAGE NET                    00373460
+         XDECO 12,LINE          PREP EMPLOYEE COUNTER FOR XPRNT         00373560
+         XDECO 11,AVG           PREP NET AVERAGE FOR XPRNT              00373660
+         XDECO 13,TOTAL         PREP EMPLOYEES IN OT FOR XPRNT          00373760
+         XPRNT EMPCNT,39        PRINT EMPLOYEE COUNT                    00373871
+         XPRNT AVGNET,46        PRINT AVERAGE NET                       00373960
+         XPRNT OTEMP,55         PRINT NUMBER OF OT EMPLOYEES            00374060
+         BR    14                                                       00374162
+         EJECT                                                          00374262
+*******************CONSTANTS/VARIABLES*************************         00374307
+         SPACE 2                                                        00374411
+CARD     DS    CL80             SETTING CARD INPUT RANGE                00374504
+FORMY    DC    C'0'                                                     00374717
+         DC    CL18'      EMPLOYEE '                                    00374828
+         DC    CL16'      HOURLY '                                      00374928
+         DC    CL39'      HOURS '                                       00375028
+         DC    CL15'    GROSS '                                         00375128
+         DC    CL7'    NET '                                            00375230
+FORMZ    DC    C'0'                                                     00375317
+         DC    CL16'      NUMBER '                                      00375428
+         DC    CL14'        WAGE '                                      00375528
+         DC    CL16'          WORKED '                                  00375628
+         DC    CL15'    BONUS '                                         00375728
+         DC    CL12' DEDUCTION '                                        00375820
+         DC    CL13'    PAY '                                           00375928
+         DC    CL11'      PAY '                                         00376028
+DATA     DC    C'0'                                                     00376126
+EMPID    DS    6C                                                       00376211
+         DC    CL10' '                                                  00376326
+HOURLY   DS    4C                                                       00376411
+         DC    CL10' '                                                  00376526
+WORK     DS    2C                                                       00376611
+         DC    CL10' '                                                  00376726
+BONUS    DS    4C                                                       00376811
+         DC    CL10' '                                                  00376926
+DEDUCT   DS    4C                                                       00377011
+         DC    CL10' '                                                  00377126
+GROSS    DS    5C                                                       00377211
+         DC    CL10' '                                                  00377326
+NET      DS    5C                                                       00377411
+         DC    CL10' '                                                  00377526
+EMPCNT   DC    C' '                                                     00377645
+         DC    CL26'TOTAL NUMBER OF EMPLOYEES:  '                       00377749
+LINE     DS    11C                                                      00377855
+AVGNET   DC    C'0'                                                     00377952
+         DC    CL28'AVERAGE NET PAY PER EMPLOYEE:  '                    00378057
+         DC    CL5' '                                                   00378147
+AVG      DS    11C                                                      00378255
+OTEMP    DC    C'0'                                                     00378332
+         DC    CL37'NUMBER OF EMPLOYEES WORKING OVERTIME:  '            00378449
+         DC    CL5' '                                                   00378547
+TOTAL    DS    11C                                                      00378657
+         END   MAIN                                                     00378700
+/*                                                                      00378800
+//FT05F001  DD DSN=KC02314.SUMMER14.CSCI360.HW3DATA,DISP=SHR            00378901
+//FT06F001  DD SYSOUT=*                                                 00379034
+//                                                                      00440001
