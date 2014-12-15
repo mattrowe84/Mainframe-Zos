@@ -1,0 +1,607 @@
+//KC03Q15A JOB  ,'MATTHEW ROWE',MSGCLASS=H
+//*
+//*****************************************************************
+//*                                                               *
+//* CSCI 465/565 - FALL 2014                                      *
+//*                                                               *
+//* ASSIGNMENT 3                                                  *
+//*                                                               *
+//* PROGRAMMER: MATTHEW ROWE                                      *
+//*                                                               *
+//* DATE: 10/03/2014                                              *
+//* TIME: 11:59:59 PM                                             *
+//*                                                               *
+//* THE PURPOSE OF THIS JOB IS TO READ THE DAILY RECORDS OF A     *
+//* BROKERAGE FIRM AND CREAT A REPORT OF STOCKS ORGANIZED BY      *
+//* BROKER, WHICH SHOWS AMOUNT SOLD, COMMISSION WITH 15 RECORDS   *
+//* PER PAGE. THEN A SECOND RECORD OF BROKERS  WHOM HAVE MORE     *
+//* 20,000 SHARES SOLD DURING THE WORKING DAY                     *
+//*****************************************************************
+//*
+//JSTEP01 EXEC PGM=IGYCRCTL,PARM=(FLAG(I,I),APOST)
+//*
+//***************************************************************
+//*                                                             *
+//*  JSTEP01 COMPILES THE COBOL SOURCE CODE.                    *
+//*                                                             *
+//*  DDNAME              FILE DESCRIPTION                       *
+//*                                                             *
+//*  STEPLIN   INPUT:   SOURCE CODE TO BE COMPILED              *
+//*  SYSPRINT  OUTPUT:  SOURCE LISTING AND DIAGNOSTIC           *
+//*                     MESSAGES                                *
+//***************************************************************
+//*
+//SYSIN    DD *
+      ****************************************************************
+      * PROGRAM NAME:  ASSIGN3                                       *
+      *                                                              *
+      * FUNCTION:  THIS PROGRAM READS INFORMATION FROM THE INPUT     *
+      *            FILE MAKES CALCULATIONS ON SHARES SOLD BY BROKERS *
+      *            AND CREATES A REPORT OF THE DAILY SALES           *
+      *            AND A SECOND REPORT FOR THE BROKERS WITH BIG      *
+      *            SALES                                             *
+      *                                                              *
+      * INPUT:     DATA1 - THE INPUT DATA FILE                       *
+      *                                                              *
+      * OUTPUT:    THE 80 BYTE LINES OF THE INPUT RECORD             *
+      *                                                              *
+      ****************************************************************
+
+       IDENTIFICATION DIVISION.
+
+       PROGRAM-ID.    ASSIGN3.
+       AUTHOR.        MATTHEW ROWE.
+       DATE-WRITTEN.  10/03/2014.
+       DATE-COMPILED. 10/03/2014.
+       EJECT
+       ENVIRONMENT DIVISION.
+
+       INPUT-OUTPUT SECTION.
+
+       FILE-CONTROL.
+
+           SELECT STOCK-PRICE  ASSIGN TO SHAREPR.
+           SELECT DAILY-SALES  ASSIGN TO SALESDY.
+           SELECT PRINT-REPORT ASSIGN TO PRINTER.
+           SELECT SALES-REPORT ASSIGN TO SALESRP.
+
+       DATA DIVISION.
+
+       FILE SECTION.
+
+       FD SALES-REPORT
+           RECORDING MODE IS F.
+
+       01  TEMP-STORAGE.
+           05 TEMP-BROKER                PIC X(24).
+           05 TEMP-SHARES-SOLD           PIC 9(11)V9(3).
+
+       FD  STOCK-PRICE
+           RECORDING MODE IS F.
+
+       01  SHARE.
+           05 IN-SHARE-PRICE             PIC S9(3)V9(2) COMP SYNC.
+           05 FILLER                     PIC X(76).
+
+       FD  DAILY-SALES
+           RECORDING MODE IS F.
+
+       01  INPUT-RECORD.
+           05 IN-BROKER-CITY             PIC X(24).
+           05 IN-BROKER-NAME             PIC X(24).
+           05 IN-DEPOSIT-AMOUNT          PIC S9(9)V99.
+           05 COMMISSION-FLAG            PIC S9.
+           05 FILLER                     PIC X(20).
+
+       FD  PRINT-REPORT
+           RECORDING MODE IS F.
+
+       01  PRINT-RECORD                  PIC X(132).
+
+       WORKING-STORAGE SECTION.
+
+      *******************************************************
+      * WORKING STORAGE:                                    *
+      * NAME                  PURPOSE                       *
+      *                                                     *
+      * PAGE-COUNT            COUNT PAGES                   *
+      * CURRENT-DATE-FIELDS   FOR DATE AND TIME             *
+      * PAGE-COUNT-2          COUNT PAGES REPORT 2          *
+      * EOF-FLAGS                                           *
+      * LINE-COUNT            COUNTS ENTRY PER PAGE         *
+      * HEADER-L1             TOP HEADER                    *
+      * LINE-COUNT-2          SAME AS 1 BUT FOR REP2        *
+      * HEADER-L2-R1          MIDDLE HEADER REPORT 1        *
+      * RECORD-COUNT          COUNTS RECORDS                *
+      * HEADER-L3-R1          LAST HEADER REPORT 1          *
+      * RECORD-COUNT-2        COUNTS REPORT 2 RECORDS       *
+      * HEADER-L2-R2          MIDDLE HEADER REPORT 2        *
+      * DEPOSIT-COUNT         TALLY FOR DEPOSIT             *
+      * HEADER-L3-R2          LAST HEADER REPORT 2          *
+      * COMMISSION-COUNT      TALLY FOR COMMISSION          *
+      * HEAD-DIVIDE           LINE OF '-'                   *
+      * HEADER-EOR1           EOR HEADER                    *
+      * HEADER-EOR2           EO REPORT 2 HEADER            *
+      * EOR-STATS1            TOTALS FOR EOR 1              *
+      * EOR-STATS2            TOTALS FOR EOR 2              *
+      * SHARE-PRICE           SHARE PRICE STORAGE           *
+      * SHARES-SOLD           SHARES SOLD BY BROKER         *
+      * PRINT-LINE-1          REPORT 1 PRINT                *
+      * PRINT-LINE-2          REPORT 2 PRINT                *
+      *                                                     *
+      *******************************************************
+
+       01  CURRENT-DATE-FIELDS.
+           05  CURRENT-DATE.
+               10  CURRENT-YEAR               PIC  9(4).
+               10  CURRENT-MONTH              PIC  9(2).
+               10  CURRENT-DAY                PIC  9(2).
+           05  CURRENT-TIME.
+               10  CURRENT-HOUR               PIC  9(2).
+               10  CURRENT-MINUTE             PIC  9(2).
+               10  CURRENT-SECOND             PIC  9(2).
+               10  CURRENT-MS                 PIC  9(2).
+           05  DIFF-FROM-GMT                  PIC S9(4).
+
+       01  EOF-FLAGS.
+           05  EOF-FLAG1                 PIC X VALUE 'N'.
+           05  EOF-FLAG2                 PIC X VALUE 'N'.
+           05  EOF-FLAG3                 PIC X VALUE 'N'.
+
+       01  HEADER-L1.
+           05 OUT-MM                     PIC X(2).
+           05 FILLER                     PIC X VALUE '/' .
+           05 OUT-DD                     PIC X(2).
+           05 FILLER                     PIC X VALUE '/'.
+           05 OUT-YYYY                   PIC X(4).
+           05 FILLER                     PIC X(35) VALUE SPACES.
+           05 BROKER-FIRM                PIC X(44)
+              VALUE 'DEWEY, CHEATHAM & HOWE MUTUAL FUND WORLDWIDE'.
+           05 FILLER                     PIC X(35) VALUE SPACES.
+           05 PG                         PIC X(6) VALUE 'PAGE: '.
+           05 PAGE-NUM                   PIC 99 VALUE 0.
+
+       01  HEADER-L2-R1.
+           05 OUT-HH                     PIC 99.
+           05 FILLER                     PIC X VALUE ':'.
+           05 OUT-MN                     PIC 99.
+           05 FILLER                     PIC X VALUE ':'.
+           05 OUT-SS                     PIC 99.
+           05 FILLER                     PIC X(42) VALUE SPACES.
+           05 BSC-REPORT                 PIC X(34)
+                VALUE 'BROKER SALES AND COMMISSION REPORT'.
+           05 FILLER                     PIC X(48) VALUE SPACES.
+
+       01  HEADER-L3-R1.
+           05 CITY-HEADER                PIC X(11)
+                VALUE 'BRANCH CITY'.
+           05 FILLER                     PIC X(22).
+           05 BROKER-HEADER              PIC X(11)
+                VALUE 'BROKER NAME'.
+           05 FILLER                     PIC X(23).
+           05 DEPOSIT-HEADER             PIC X(14)
+                VALUE 'DEPOSIT AMOUNT'.
+           05 FILLER                     PIC X(17).
+           05 SHARES-SOLD-HEADER         PIC X(11)
+                VALUE 'SHARES SOLD'.
+           05 FILLER                     PIC X(13).
+           05 COMMISSION-HEADER          PIC X(10)
+                VALUE 'COMMISSION'.
+
+       01  HEAD-DIVIDE                   PIC X(132) VALUE ALL '-'.
+
+       01  HEADER-L2-R2.
+           05 OUT-HH-2                   PIC 99.
+           05 FILLER                     PIC X VALUE ':'.
+           05 OUT-MN-2                   PIC 99.
+           05 FILLER                     PIC X VALUE ':'.
+           05 OUT-SS-2                   PIC 99.
+           05 FILLER                     PIC X(47) VALUE SPACES.
+           05 BLS-REPORT                 PIC X(24)
+                VALUE 'BROKER LARGE SALE REPORT'.
+           05 FILLER                     PIC X(53).
+
+       01  HEADER-L3-R2.
+           05 FILLER                     PIC X(41) VALUE SPACES.
+           05 BROKER-HEADER-2            PIC X(11)
+                VALUE 'BROKER NAME'.
+           05 FILLER                     PIC X(21) VALUE SPACES.
+           05 SHARES-HEADER-2            PIC X(11)
+                VALUE 'SHARES SOLD'.
+           05 FILLER                     PIC X(48) VALUE SPACES.
+
+       01  HEADER-EOR1.
+           05 FILLER                     PIC X(15).
+           05 TOTAL-RECORDS-HEAD         PIC X(12)
+                VALUE 'RECORDS READ'.
+           05 FILLER                     PIC X(11).
+           05 TOTAL-DEPOSIT-HEAD         PIC X(13)
+                VALUE 'TOTAL DEPOSIT'.
+           05 FILLER                     PIC X(17).
+           05 TOTAL-SHARES-HEAD          PIC X(17)
+                VALUE 'TOTAL SHARES SOLD'.
+           05 FILLER                     PIC X(15).
+           05 TOTAL-COMMISSION-HEAD      PIC X(16)
+                VALUE 'TOTAL COMMISSION'.
+           05 FILLER                     PIC X(16).
+
+       01  HEADER-EOR2.
+           05 FILLER                     PIC X(15).
+           05 TOTAL-RECORDS-HEAD2        PIC X(12)
+                VALUE 'RECORDS READ'.
+           05 FILLER                     PIC X(11).
+           05 TOTAL-SHARES-HEAD2         PIC X(17)
+                VALUE 'TOTAL SHARES SOLD'.
+
+       01  EOR-STATS2.
+           05 FILLER                     PIC X(15) VALUE SPACES.
+           05 TOTAL-RECORDS2             PIC Z,ZZ9.
+           05 FILLER                     PIC X(10) VALUE SPACES.
+           05 TOTAL-SHARES2              PIC ZZ,ZZZ,ZZZ,ZZZ,ZZ9.999.
+           05 FILLER                     PIC X(80) VALUE SPACES.
+
+       01  SHARE-PRICE                   PIC S9(3)V99 COMP SYNC.
+
+       01  SHARES-SOLD                   PIC S9(11)V9(3).
+
+       01  PRINT-LINE-1.
+           05 OUT-BROKER-CITY            PIC X(24).
+           05 FILLER                     PIC X(9) VALUE SPACES.
+           05 OUT-BROKER-NAME            PIC X(24).
+           05 FILLER                     PIC X(9) VALUE SPACES.
+           05 OUT-DEPOSIT                PIC $$$$,$$$,$$9.99.
+           05 FILLER                     PIC X(9) VALUE SPACES.
+           05 SHARES-SOLD-OUT            PIC ZZ,ZZZ,ZZZ,ZZ9.9999.
+           05 FILLER                     PIC X(8) VALUE SPACES.
+           05 COMMISSION                 PIC $$$$,$$$,$$9.99.
+
+       01  PRINT-LINE-2.
+           05 FILLER                     PIC X(41) VALUE SPACES.
+           05 OUT-BROKER-NAME2           PIC X(24).
+           05 FILLER                     PIC X(10) VALUE SPACES.
+           05 SHARES-SOLD2               PIC ZZ,ZZZ,ZZZ,ZZ9.9999.
+           05 FILLER                     PIC X(38) VALUE SPACES.
+
+       01  EOR-STATS1.
+           05 FILLER                     PIC X(15) VALUE SPACES.
+           05 TOTAL-RECORDS              PIC Z,ZZ9.
+           05 FILLER                     PIC X(10) VALUE SPACES.
+           05 TOTAL-DEPOSIT              PIC $$,$$$,$$$,$$$,$$9.99.
+           05 FILLER                     PIC X(10) VALUE SPACES.
+           05 TOTAL-SHARES               PIC ZZ,ZZZ,ZZZ,ZZZ,ZZ9.9999.
+           05 FILLER                     PIC X(10) VALUE SPACES.
+           05 TOTAL-COMMISSION           PIC $$,$$$,$$$,$$$,$$9.99.
+           05 FILLER                     PIC X(17) VALUE SPACES.
+
+       01  PAGE-COUNT                    PIC 99 VALUE 0 COMP SYNC.
+
+       01  PAGE-COUNT-2                  PIC 99 VALUE 0 COMP SYNC.
+
+       01  LINE-COUNT                    PIC 99 VALUE 99 COMP SYNC.
+
+       01  LINE-COUNT-2                  PIC 99 VALUE 99 COMP SYNC.
+
+       01  RECORD-COUNT                  PIC 9(4) VALUE 0 COMP SYNC.
+
+       01  RECORD-COUNT-2                PIC 9(4) VALUE 0 COMP SYNC.
+
+       01  DEPOSIT-COUNT                 PIC S9(14)V99 COMP SYNC.
+
+       01  COMMISSION-COUNT              PIC S9(13)V99 COMP SYNC.
+
+       01  SHARES-COUNT                  PIC S9(14)V9(3) COMP SYNC.
+
+       01  SHARES-COUNT-2                PIC S9(14)V9(3) COMP SYNC.
+
+       01  IN-COMMISSION                 PIC S9(13)V99 COMP SYNC.
+
+       01  SHARE-CHECK                   PIC S9(15).
+
+       PROCEDURE DIVISION.
+
+      **********************************************
+      *                                            *
+      * 0000-MAIN READS FILES AND CALLS OTHER      *
+      * SUBPROCESSES FOR CALCULATING AND PRINTING  *
+      *                                            *
+      **********************************************
+
+       0000-MAIN.
+
+           OPEN INPUT  STOCK-PRICE.
+
+           READ STOCK-PRICE
+             AT END MOVE 'Y' TO EOF-FLAG1
+           END-READ.
+
+           PERFORM 0100-GET-SHAREPR
+             UNTIL EOF-FLAG1 = 'Y'.
+
+           CLOSE STOCK-PRICE.
+
+           OPEN OUTPUT PRINT-REPORT.
+
+           OPEN INPUT  DAILY-SALES
+                OUTPUT SALES-REPORT.
+
+           READ DAILY-SALES
+             AT END MOVE 'Y' TO EOF-FLAG2
+           END-READ.
+
+           PERFORM 0200-PROCESS-RECORD
+             UNTIL EOF-FLAG2 = 'Y'.
+
+           CLOSE DAILY-SALES
+                 SALES-REPORT.
+
+           OPEN INPUT  SALES-REPORT.
+
+           READ SALES-REPORT
+             AT END MOVE 'Y' TO EOF-FLAG3
+           END-READ.
+
+           PERFORM 0300-PROCESS-RECORD2
+             UNTIL EOF-FLAG3 = 'Y'.
+
+           CLOSE SALES-REPORT
+                 PRINT-REPORT.
+
+           STOP RUN.
+
+       0000-EXIT. EXIT.
+       EJECT
+
+      **********************************************
+      *                                            *
+      * 0100-GET-SHAREPR READS END OF DAY SHARE    *
+      * PRICE AND SETS DATE AND TIME FOR HEADERS   *
+      *                                            *
+      **********************************************
+
+       0100-GET-SHAREPR.
+
+           MOVE  IN-SHARE-PRICE TO SHARE-PRICE.
+
+           READ STOCK-PRICE
+             AT END MOVE 'Y' TO EOF-FLAG1
+           END-READ.
+
+           MOVE FUNCTION CURRENT-DATE TO CURRENT-DATE-FIELDS.
+
+           MOVE CURRENT-YEAR TO OUT-YYYY.
+
+           MOVE CURRENT-MONTH TO OUT-MM.
+
+           MOVE CURRENT-DAY TO OUT-DD.
+
+           MOVE CURRENT-HOUR TO OUT-HH.
+
+           MOVE CURRENT-MINUTE TO OUT-MN.
+
+           MOVE CURRENT-SECOND TO OUT-SS.
+
+       0100-EXIT. EXIT.
+
+      **********************************************
+      *                                            *
+      * 0200-PROCESS-REPORT READS FILES CALCULATES *
+      * COMMISSION, SALES, AND TAOTALS THEN CALLS  *
+      * SUB PROCESSES TO PRINT DATA.               *
+      *                                            *
+      **********************************************
+
+
+       0200-PROCESS-RECORD.
+
+           IF LINE-COUNT > 15
+              PERFORM 0400-NEW-PAGE.
+
+           MOVE IN-BROKER-CITY TO OUT-BROKER-CITY.
+
+           MOVE IN-BROKER-NAME TO OUT-BROKER-NAME.
+
+           MOVE IN-DEPOSIT-AMOUNT TO OUT-DEPOSIT.
+
+           COMPUTE SHARES-SOLD ROUNDED =
+                IN-DEPOSIT-AMOUNT / SHARE-PRICE.
+
+           COMPUTE SHARES-COUNT = SHARES-COUNT + SHARES-SOLD.
+
+           MOVE SHARES-SOLD TO SHARES-SOLD-OUT.
+
+           COMPUTE DEPOSIT-COUNT = DEPOSIT-COUNT + IN-DEPOSIT-AMOUNT.
+
+           MOVE SHARES-SOLD TO SHARE-CHECK.
+
+           IF SHARE-CHECK > 20000
+              MOVE IN-BROKER-NAME TO TEMP-BROKER
+              MOVE SHARES-SOLD TO TEMP-SHARES-SOLD
+              COMPUTE RECORD-COUNT-2 = RECORD-COUNT-2 + 1
+              WRITE TEMP-STORAGE
+              END-IF.
+
+           IF COMMISSION-FLAG = 1
+              COMPUTE IN-COMMISSION ROUNDED =
+              IN-DEPOSIT-AMOUNT * (5 / 800)
+           ELSE
+              COMPUTE IN-COMMISSION ROUNDED =
+              IN-DEPOSIT-AMOUNT * (7 / 800)
+           END-IF.
+
+           COMPUTE COMMISSION-COUNT = COMMISSION-COUNT + IN-COMMISSION.
+
+           MOVE IN-COMMISSION TO COMMISSION.
+
+           WRITE PRINT-RECORD FROM PRINT-LINE-1 AFTER 2.
+
+           COMPUTE LINE-COUNT = LINE-COUNT + 1.
+
+           COMPUTE RECORD-COUNT = RECORD-COUNT + 1.
+
+           READ DAILY-SALES
+             AT END MOVE 'Y' TO EOF-FLAG2
+           END-READ.
+
+           IF EOF-FLAG2 = 'Y'
+              PERFORM 0210-EOR-PRINT.
+
+      **********************************************
+      *                                            *
+      * 0210-EOR-PRINT  CREATES THE HEADES AND     *
+      * COLUMN HEADINGS FOR END OF REPORT 1        *
+      *                                            *
+      **********************************************
+
+       0210-EOR-PRINT.
+           MOVE  RECORD-COUNT TO TOTAL-RECORDS.
+           MOVE  DEPOSIT-COUNT TO TOTAL-DEPOSIT.
+           MOVE  SHARES-COUNT TO TOTAL-SHARES.
+           MOVE  COMMISSION-COUNT TO TOTAL-COMMISSION.
+           WRITE PRINT-RECORD FROM HEADER-EOR1 AFTER PAGE.
+           WRITE PRINT-RECORD FROM HEAD-DIVIDE AFTER 1.
+           WRITE PRINT-RECORD FROM EOR-STATS1 AFTER  2.
+       0210-EXIT. EXIT.
+
+
+       0200-EXIT. EXIT.
+       EJECT
+
+      **********************************************
+      *                                            *
+      * 0300-PROCESS-RECORD2 READS TEMPORARY FILE  *
+      * AND PREINTS DATA FOR REPORT 2              *
+      *                                            *
+      **********************************************
+
+
+       0300-PROCESS-RECORD2.
+
+           IF LINE-COUNT-2 > 15
+              PERFORM 0500-NEW-PAGE2.
+
+           MOVE TEMP-BROKER TO OUT-BROKER-NAME2.
+
+           MOVE TEMP-SHARES-SOLD TO SHARES-SOLD2.
+
+           WRITE PRINT-RECORD FROM PRINT-LINE-2 AFTER 2.
+
+           COMPUTE LINE-COUNT-2 = LINE-COUNT-2 + 1.
+
+           READ SALES-REPORT
+             AT END MOVE 'Y' TO EOF-FLAG3
+           END-READ.
+
+           IF EOF-FLAG3 = 'Y'
+              PERFORM 0310-EOR-PRINT2.
+
+      **********************************************
+      *                                            *
+      * 0310-EOR-PRINT2 CREATES THE HEADES AND     *
+      * COLUMN HEADINGS FOR END OF REPORT 2        *
+      *                                            *
+      **********************************************
+
+       0310-EOR-PRINT2.
+           MOVE  RECORD-COUNT-2 TO TOTAL-RECORDS2.
+           MOVE  SHARES-COUNT-2 TO TOTAL-SHARES2.
+           WRITE PRINT-RECORD FROM HEADER-EOR1 AFTER PAGE.
+           WRITE PRINT-RECORD FROM HEAD-DIVIDE AFTER 1.
+           WRITE PRINT-RECORD FROM EOR-STATS2 AFTER  2.
+       0310-EXIT. EXIT.
+
+       0300-EXIT. EXIT.
+
+      **********************************************
+      *                                            *
+      * 0400-NEW-PAGE  CREATES THE HEADES AND      *
+      * COLUMN HEADINGS FOR REPORT 1               *
+      *                                            *
+      **********************************************
+
+
+       0400-NEW-PAGE.
+
+           COMPUTE PAGE-COUNT = PAGE-COUNT + 1.
+
+           MOVE PAGE-COUNT TO PAGE-NUM.
+
+           WRITE PRINT-RECORD FROM HEADER-L1 AFTER PAGE.
+
+           WRITE PRINT-RECORD FROM HEADER-L2-R1 AFTER 1.
+
+           WRITE PRINT-RECORD FROM HEADER-L3-R1 AFTER 1.
+
+           WRITE PRINT-RECORD FROM HEAD-DIVIDE AFTER 1.
+
+           MOVE 1 TO LINE-COUNT.
+
+       0400-EXIT. EXIT.
+
+      **********************************************
+      *                                            *
+      * 0500-NEW-PAGE2 CREATES THE HEADES AND      *
+      * COLUMN HEADINGS FOR REPORT 2               *
+      *                                            *
+      **********************************************
+
+       0500-NEW-PAGE2.
+
+           COMPUTE PAGE-COUNT-2 = PAGE-COUNT-2 + 1.
+
+           MOVE PAGE-COUNT-2 TO PAGE-NUM.
+
+           WRITE PRINT-RECORD FROM HEADER-L1 AFTER PAGE.
+
+           WRITE PRINT-RECORD FROM HEADER-L2-R2 AFTER 1.
+
+           WRITE PRINT-RECORD FROM HEADER-L3-R2 AFTER 1.
+
+           WRITE PRINT-RECORD FROM HEAD-DIVIDE AFTER 1.
+
+           MOVE 1 TO LINE-COUNT-2.
+
+       0500-EXIT. EXIT.
+
+/*
+//SYSLIN   DD  DSN=&&TEMP,UNIT=PUB,SPACE=(TRK,(3,3)),
+//             DISP=(NEW,PASS,DELETE)
+//SYSPRINT DD  SYSOUT=*
+//*
+//***************************************************************
+//*                                                             *
+//*  THE FOLLOWING DATA SETS ARE REQUIRED BY THE COMPILER.      *
+//*                                                             *
+//***************************************************************
+//*
+//SYSUT1   DD  SPACE=(CYL,(1,1))
+//SYSUT2   DD  SPACE=(CYL,(1,1))
+//SYSUT3   DD  SPACE=(CYL,(1,1))
+//SYSUT4   DD  SPACE=(CYL,(1,1))
+//SYSUT5   DD  SPACE=(CYL,(1,1))
+//SYSUT6   DD  SPACE=(CYL,(1,1))
+//SYSUT7   DD  SPACE=(CYL,(1,1))
+//*
+//JSTEP02  EXEC PGM=HEWLDRGO,PARM='MAP,LET',COND=(0,LT)
+//*
+//***************************************************************
+//*                                                             *
+//*  JSTEP02 CREATES A LOAD MODULE FROM THE INPUT OBJECT        *
+//*  MODULE, EXECUTES THE LOAD MODULE, AND THEN PRINTS IT.      *
+//*                                                             *
+//*  SYSLIN     INPUT:   THE OBJECT MODULE                      *
+//*  SYSLIB     INPUT:   LOAD MODULE LIBRARIES NEEDED BY        *
+//*                      THE LOADER                             *
+//*  SHAREPR    INPUT:   INSTREAM DATA LABEL 1                  *
+//*  SALESDY    INPUT:   INSTREAM DATA LABEL 2                  *
+//*  SALESDY    INPUT:   INSTREAM DATA LABEL 1                  *
+//*             OUTPUT:  LABEL FOR OUTPUT FOR REPORT 2          *
+//*                                                             *
+//*  PRINTER    OUTPUT:  LABEL FOR OUTPUT TO STDOUT             *
+//***************************************************************
+//*
+//SYSLIN    DD DSN=&&TEMP,DISP=(OLD,DELETE)
+//SHAREPR   DD DSN=KC02322.CSCI465.DATAFA14(DATA3A),DISP=SHR
+//SALESDY   DD DSN=KC02322.CSCI465.DATAFA14(DATA3B),DISP=SHR
+//SALESRP   DD SPACE=(TRK,(3,3))
+//SYSLIB    DD DSN=CEE.SCEELKED,DISP=SHR
+//PRINTER   DD SYSOUT=*
