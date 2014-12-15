@@ -1,0 +1,711 @@
+//KC03Q15A JOB ,'MATTHEW ROWE',MSGCLASS=H
+//*
+//JSTEP01 EXEC PGM=IGYCRCTL,PARM='FLAG(I,I),APOST,LIB'
+//***************************************************************
+//*                                                             *
+//*  JSTEP02 CALL COBOL COMPILER IGYCRCTL                       *
+//*          TO COMPILE AN INSTREAM COBOL PROGRAM               *
+//*                                                             *
+//*  DDNAME              FILE DESCRIPTION                       *
+//*                                                             *
+//*  SYSIN    INPUT:   INSTREAM COBOL PROGRAM                   *
+//*  SYSLIN   OUTPUT:  TEMP STORAGE FOR OBJECT MODULE           *
+//*  SYSPRINT OUTPUT:  COMPILER OUTPUT                          *
+//*  SYSUTN   OUTPUT:  SEVEN TEMP SCRATCH PADS                  *
+//*                                                             *
+//***************************************************************
+//*
+//SYSIN    DD   *
+      ****************************************************************
+      * PROGRAM NAME:  SALESRPT                                      *
+      *                                                              *
+      * FUNCTION: THIS PROGRAM READS INFORMATION FROM 3 INPUT FILES  *
+      *           AND BUILDS A 2 DIMENSIONAL TABLE TO HOLD           *
+      *           MUTUAL FUND DATA.                                  *
+      *                                                              *
+      *           THEN BUILD A SALES REPORT BASED ON TABULATED DATA  *
+      *                                                              *
+      * INPUT:     DATA5A - THE MUTUAL FUND FILE                     *
+      * INPUT:     DATA5B - THE CLOSING PRICE FILE                   *
+      * INPUT:     DATA5C - THE BROKER SALES FILE                    *
+      *                                                              *
+      * OUTPUT:    THE 132 BYTE LINES OF THE OUPUT RECORD            *
+      *                                                              *
+      ****************************************************************
+
+       IDENTIFICATION DIVISION.
+
+       PROGRAM-ID.    SALESRPT
+       AUTHOR.        MATTHEW ROWE
+       DATE-WRITTEN.  11/25/2014
+       EJECT
+
+       ENVIRONMENT DIVISION.
+
+       INPUT-OUTPUT SECTION.
+
+       FILE-CONTROL.
+
+           SELECT IN-FUND-FILE ASSIGN TO INFILE5A.
+           SELECT IN-DLY-FUND-PRICE-FILE ASSIGN TO INFILE5B.
+           SELECT IN-SALES-FILE ASSIGN TO INFILE5C.
+           SELECT PRINT-FILE ASSIGN TO PRINTER.
+
+       DATA DIVISION.
+
+       FILE SECTION.
+
+       FD  IN-FUND-FILE
+           RECORDING MODE IS F.
+
+       01  IN-FUND-RECORD.
+       COPY  FUNDREC.
+           05  FILLER                     PIC X(53).
+
+
+       FD  IN-DLY-FUND-PRICE-FILE
+           RECORDING MODE IS F.
+
+       COPY PRICEREC.
+
+       FD  IN-SALES-FILE
+           RECORDING MODE IS F.
+
+       COPY SALESREC.
+
+       FD  PRINT-FILE
+           RECORDING MODE IS F.
+
+       01  PRINT-RECORD                   PIC X(132).
+
+       WORKING-STORAGE SECTION.
+
+       01  TEMP-STORAGE.
+           05  TEMP-DEP                   PIC S9(9)V99 COMP-3 SYNC
+                                              VALUE 0.
+           05  TEMP-PRICE                 PIC S9(3)V99 COMP-3 SYNC
+                                              VALUE 0.
+           05  TEMP-SHARES                PIC S9(11)V9999 COMP-3 SYNC
+                                                      VALUE 0.
+
+       01  SUB-PROGRAM                    PIC X(8) VALUE 'BUILDTBL'.
+
+       01  FUND-TBL.
+           05  FUND-COUNT                 PIC S9(3) COMP SYNC VALUE 0.
+           05  FUND-ENTRY                 OCCURS 1 TO 100
+                                          DEPENDING ON FUND-COUNT
+                                          ASCENDING KEY TBL-FUND-NBR
+                                          INDEXED BY TBL-FUND-NDX.
+               10  TBL-FUND-DEPS-TOT      PIC 9(9)V99 COMP-3 VALUE 0.
+               10  TBL-FUND-SHRS-TOT      PIC 9(9)V99 COMP-3 VALUE 0.
+
+       COPY FUNDTBL.
+
+       01  EOF-FLAGS.
+           05  EOF-FLAG-1                     PIC X VALUE 'N'.
+           05  EOF-FLAG-2                     PIC X VALUE 'N'.
+           05  EOF-FLAG-3                     PIC X VALUE 'N'.
+
+       01  DATE-FIELDS.
+           05  CURRENT-DATE.
+               10  CURRENT-YEAR           PIC 9(4).
+               10  CURRENT-MONTH          PIC 9(2).
+            10  CURRENT-DAY               PIC 9(2).
+        05  CURRENT-TIME.
+            10  CURRENT-HOUR              PIC 9(2).
+            10  CURRENT-MINUTE            PIC 9(2).
+            10  CURRENT-SECOND            PIC 9(2).
+            10  CURRENT-MS                PIC 9(2).
+        05  DIFF-FROM-GMT                 PIC S9(4).
+
+       01  SUBSCRIPTS.
+           05  TSUB                       PIC S9(5) COMP SYNC VALUE 0.
+           05  SALES-SUB                  PIC S9(5) COMP SYNC VALUE 0.
+
+       01  TOTALS.
+           05  DEPOSIT-AVG                PIC S9(9)V99 COMP-3 SYNC
+                                              VALUE 0.
+           05  TOTAL-DEPOSITS             PIC 9(9)V99 COMP-3 VALUE 0.
+           05  DEPOSIT-RECS               PIC 9(3) VALUE 0.
+           05  TOTAL-SHARES               PIC 9(9)V99 COMP-3 VALUE 0.
+
+
+       01  LINE-COUNT                     PIC 99 COMP VALUE 99.
+       01  PAGE-NUM                       PIC 999 COMP VALUE 0.
+       01  BROKER-COUNT                   PIC 999 COMP VALUE 0.
+
+       01  OUT-SALES-RECORD.
+           05 OUT-CITY                    PIC X(20).
+           05 FILLER                      PIC X(2) VALUE SPACES.
+           05 OUT-NAME                    PIC X(20).
+           05 FILLER                      PIC X(2) VALUE SPACES.
+           05 OUT-FUND                    PIC X(25).
+           05 FILLER                      PIC X(8) VALUE SPACES.
+           05 OUT-FUND-NBR                PIC 99.
+           05 FILLER                      PIC X(7) VALUE SPACES.
+           05 OUT-DEPOSIT                 PIC $$$,$$9.99.
+           05 OUT-DEPOSIT-X               REDEFINES OUT-DEPOSIT
+                                          PIC X(10).
+           05 FILLER                      PIC X(15) VALUE SPACES.
+           05 OUT-PRICE-FLAG              PIC 9.
+           05 OUT-PRICE-FLAG-X            REDEFINES OUT-PRICE-FLAG
+                                          PIC X.
+           05 FILLER                      PIC X(4) VALUE SPACES.
+           05 OUT-SHARES                  PIC ZZZ,ZZZ,ZZ9.9999.
+           05 OUT-SHARES-X                REDEFINES OUT-SHARES
+                                          PIC X(16).
+       01  OUT-SUMMARY.
+           05  FILLER                     PIC X(47) VALUE SPACES.
+           05  OUT-BROKER-NUM             PIC ZZZ9.
+           05  FILLER                     PIC X(11) VALUE SPACES.
+           05  OUT-DEPOSIT-TOT            PIC $$$$,$$$,$$9.99.
+           05  FILLER                     PIC X(3) VALUE SPACES.
+           05  OUT-SHARES-TOT             PIC ZZ,ZZZ,ZZZ,ZZ9.9999.
+           05  FILLER                     PIC X(15) VALUE SPACES.
+           05  OUT-AVERAGE                PIC $$$,$$9.99.
+           05  FILLER                     PIC X(8) VALUE SPACES.
+
+       01  HEADER-1.
+           05  OUT-MONTH                  PIC 9(2).
+           05  FILLER                     PIC X     VALUE '/'.
+           05  OUT-DAY                    PIC 9(2).
+           05  FILLER                     PIC X     VALUE '/'.
+           05  OUT-YEAR                   PIC 9(4).
+           05  FILLER                     PIC X(38) VALUE SPACES.
+           05  OUT-FIRM                   PIC X(36) VALUE
+               'DEWEY, CHEATHAM AND HOWE MUTUAL FUND'.
+           05  FILLER                     PIC X(39) VALUE SPACES.
+           05  OUT-PAGE                   PIC X(6)  VALUE 'PAGE: '.
+           05  OUT-PAGE-NUM               PIC ZZ9.
+
+       01  HEADER-2.
+           05  OUT-TIME                   PIC 99B99B99.
+           05  FILLER                     PIC X(40) VALUE SPACES.
+           05  OUT-TITLE                  PIC X(36) VALUE
+               'MUTUAL FUND DEPOSIT AND SALES REPORT'.
+           05  FILLER                     PIC X(48) VALUE SPACES.
+
+
+       01  COL-HEADER-1.
+           05  CITY-LBL                   PIC X(4) VALUE 'CITY'.
+           05  FILLER                     PIC X(18) VALUE SPACES.
+           05  BROKER-LBL                 PIC X(11) VALUE
+                                                 'BROKER NAME'.
+           05  FILLER                     PIC X(11) VALUE SPACES.
+           05  FUND-LBL                   PIC X(9) VALUE 'FUND NAME'.
+           05  FILLER                     PIC X(18) VALUE SPACES.
+           05  NBR-LBL                    PIC X(8) VALUE
+                                                  'FUND NBR'.
+           05  FILLER                     PIC X(3) VALUE SPACES.
+           05  DEPOST-LBL                 PIC X(14) VALUE
+                                                  'DEPOSIT AMOUNT'.
+           05  FILLER                     PIC X(6) VALUE SPACES.
+           05  PRICE-LBL                  PIC X(10) VALUE 'PRICE FLAG'.
+           05  FILLER                     PIC X(9) VALUE SPACES.
+           05  SHARES-LBL                 PIC X(11) VALUE
+                                                      'SHARES SOLD'.
+
+       01  COL-HEADER-2.
+           05  FILLER                     PIC X(34) VALUE SPACES.
+           05  BROKER-CNT-LBL             PIC X(17) VALUE
+                                                 'NUMBER OF BROKERS'.
+           05  FILLER                     PIC X(5) VALUE SPACES.
+           05  DEPOST-TOT-LBL             PIC X(21) VALUE
+                                               'TOTAL OF ALL DEPOSITS'.
+           05  FILLER                     PIC X(5) VALUE SPACES.
+           05  SHARES-TOT-LBL             PIC X(17) VALUE
+                                                 'TOTAL SHARES SOLD'.
+           05  FILLER                     PIC X(10) VALUE SPACES.
+           05  AVG-LBL                    PIC X(15) VALUE
+                                              'AVERAGE DEPOSIT'.
+           05  FILLER                     PIC X(8) VALUE SPACES.
+
+       01  DIVIDER-1.
+           05  CITY-HYPH                  PIC X(20) VALUE ALL '-'.
+           05  FILLER                     PIC X(2) VALUE SPACES.
+           05  BROKER-HYPH                PIC X(20) VALUE ALL '-'.
+           05  FILLER                     PIC X(2) VALUE SPACES.
+           05  FUND-HYPH                  PIC X(25) VALUE ALL '-'.
+           05  FILLER                     PIC X(8) VALUE SPACES.
+           05  NBR-HYPH                   PIC XX VALUE ALL '-'.
+           05  FILLER                     PIC X(6) VALUE SPACES.
+           05  DEPOSIT-HYPH               PIC X(11) VALUE ALL '-'.
+           05  FILLER                     PIC X(15) VALUE SPACES.
+           05  PRICE-HYPH                 PIC X VALUE '-'.
+           05  FILLER                     PIC X(9) VALUE SPACES.
+           05  SHARES-HYPH                PIC X(12) VALUE ALL '-'.
+
+       01  DIVIDER-2.
+           05  FILLER                     PIC X(47) VALUE SPACES.
+           05  BROKER-NUM-HYPH            PIC X(4) VALUE ALL '-'.
+           05  FILLER                     PIC X(11) VALUE SPACES.
+           05  DEPOSIT-TOT-HYPH           PIC X(15) VALUE ALL '-'.
+           05  FILLER                     PIC X(3) VALUE SPACES.
+           05  SHARES-HYPH                PIC X(19) VALUE ALL '-'.
+           05  FILLER                     PIC X(16) VALUE SPACES.
+           05  AVG-HYP                    PIC X(9) VALUE ALL '-'.
+
+       EJECT
+
+       PROCEDURE DIVISION.
+
+       0000-MAIN.
+
+           MOVE FUNCTION CURRENT-DATE TO DATE-FIELDS.
+           MOVE CURRENT-MONTH TO OUT-MONTH.
+           MOVE CURRENT-DAY   TO OUT-DAY.
+           MOVE CURRENT-YEAR  TO OUT-YEAR.
+
+           MOVE CURRENT-TIME(1:6) TO OUT-TIME.
+           INSPECT OUT-TIME REPLACING ALL ' ' BY ':'.
+
+           CALL SUB-PROGRAM USING FUND-TBL.
+
+           OPEN INPUT  IN-SALES-FILE
+                OUTPUT PRINT-FILE.
+
+           READ IN-SALES-FILE
+             AT END MOVE 'Y' TO EOF-FLAG-3
+           END-READ.
+
+           PERFORM 0100-PROCESS-SALES-FILE
+             UNTIL EOF-FLAG-3 = 'Y'
+
+           PERFORM 0600-SUMMARY.
+
+           CLOSE IN-SALES-FILE
+                 PRINT-FILE.
+
+           STOP RUN.
+
+       0000-EXIT. EXIT.
+
+       0100-PROCESS-SALES-FILE.
+
+           MOVE IN-CITY-NAME TO OUT-CITY.
+           MOVE IN-BROKER-NAME TO OUT-NAME.
+
+           ADD 1 TO BROKER-COUNT.
+
+           PERFORM 0200-PROCESS-SALE
+             VARYING SALES-SUB FROM 1 BY 1
+               UNTIL SALES-SUB > 4
+               OR IN-FUND-NBR OF SALES-RECORD(SALES-SUB) = 0
+
+           READ IN-SALES-FILE
+             AT END MOVE 'Y' TO EOF-FLAG-3
+           END-READ.
+
+       0100-EXIT. EXIT.
+
+       0200-PROCESS-SALE.
+
+           PERFORM 0500-NEW-PAGE
+
+
+           MOVE IN-FUND-NBR OF SALES-RECORD(SALES-SUB) TO OUT-FUND-NBR.
+           MOVE IN-DEPOSIT-AMT(SALES-SUB) TO OUT-DEPOSIT.
+
+           ADD  IN-DEPOSIT-AMT(SALES-SUB)
+             TO TBL-FUND-DEPS-TOT(TBL-FUND-NDX).
+           ADD  IN-DEPOSIT-AMT(SALES-SUB) TO TOTAL-DEPOSITS.
+
+           SEARCH ALL FUND-ENTRY
+             AT END
+               PERFORM 0300-FUND-NOT-FOUND
+             WHEN TBL-FUND-NBR(TBL-FUND-NDX)
+                  = IN-FUND-NBR OF SALES-RECORD(SALES-SUB)
+               PERFORM 0400-FUND-FOUND
+           END-SEARCH.
+
+           WRITE PRINT-RECORD FROM OUT-SALES-RECORD AFTER 2.
+
+           MOVE SPACES TO OUT-CITY
+                          OUT-NAME.
+
+           ADD 1 TO LINE-COUNT.
+
+       0200-EXIT. EXIT.
+
+       0300-FUND-NOT-FOUND.
+
+           MOVE 'MUTUAL FUND NOT FOUND' TO OUT-FUND.
+           MOVE SPACES TO OUT-DEPOSIT-X
+                          OUT-PRICE-FLAG-X
+                          OUT-SHARES-X.
+
+       0300-EXIT. EXIT.
+
+       0400-FUND-FOUND.
+
+           MOVE TBL-FUND-NAME(TBL-FUND-NDX) TO OUT-FUND.
+           MOVE IN-PRICE-FLAG(SALES-SUB) TO OUT-PRICE-FLAG.
+
+           MOVE IN-PRICE-FLAG(SALES-SUB) TO TSUB.
+
+           MOVE IN-DEPOSIT-AMT(SALES-SUB) TO TEMP-DEP.
+           MOVE TBL-DLY-FUND-PRICE(TBL-FUND-NDX TSUB) TO TEMP-PRICE.
+
+           ADD 1 TO DEPOSIT-RECS.
+
+           CALL 'CALCSHRS' USING TEMP-DEP
+                                 TEMP-PRICE
+                                 TEMP-SHARES.
+
+           MOVE TEMP-SHARES TO OUT-SHARES.
+
+           ADD TEMP-SHARES TO TBL-FUND-SHRS-TOT(TBL-FUND-NDX).
+           ADD TEMP-SHARES TO TOTAL-SHARES.
+
+       0400-EXIT. EXIT.
+
+       0500-NEW-PAGE.
+
+           IF LINE-COUNT >= 16
+               ADD 1 TO PAGE-NUM
+               MOVE PAGE-NUM TO OUT-PAGE-NUM
+
+               WRITE PRINT-RECORD FROM HEADER-1 AFTER PAGE
+               WRITE PRINT-RECORD FROM HEADER-2 AFTER 1
+               WRITE PRINT-RECORD FROM COL-HEADER-1 AFTER 2
+               WRITE PRINT-RECORD FROM DIVIDER-1 AFTER 1
+
+               MOVE 0 TO LINE-COUNT
+               MOVE IN-CITY-NAME TO OUT-CITY
+               MOVE IN-BROKER-NAME TO OUT-NAME
+
+           END-IF.
+
+       0500-EXIT. EXIT.
+
+       0600-SUMMARY.
+
+               COMPUTE DEPOSIT-AVG ROUNDED = TOTAL-DEPOSITS /
+                                   DEPOSIT-RECS.
+               MOVE DEPOSIT-AVG TO OUT-AVERAGE.
+
+               ADD 1 TO PAGE-NUM.
+               MOVE PAGE-NUM TO OUT-PAGE-NUM.
+               MOVE '      MUTUAL FUND SALES TOTALS' TO OUT-TITLE.
+
+               WRITE PRINT-RECORD FROM HEADER-1 AFTER PAGE.
+               WRITE PRINT-RECORD FROM HEADER-2 AFTER 1.
+               WRITE PRINT-RECORD FROM COL-HEADER-2 AFTER 2.
+               WRITE PRINT-RECORD FROM DIVIDER-2 AFTER 1.
+
+               MOVE TOTAL-DEPOSITS TO OUT-DEPOSIT-TOT.
+               MOVE TOTAL-SHARES TO OUT-SHARES-TOT.
+               MOVE BROKER-COUNT TO OUT-BROKER-NUM.
+
+               WRITE PRINT-RECORD FROM OUT-SUMMARY.
+
+       0600-EXIT. EXIT.
+
+
+//SYSLIB   DD  DSN=KC02322.CSCI465.COPYLIB,DISP=SHR
+//*
+//SYSLIN   DD  DSN=&&OBJ1,SPACE=(TRK,(3,3)),
+//             DISP=(MOD,PASS,DELETE)
+//*
+//SYSPRINT DD  SYSOUT=*
+//*
+//SYSUT1   DD  SPACE=(CYL,(1,1))
+//SYSUT2   DD  SPACE=(CYL,(1,1))
+//SYSUT3   DD  SPACE=(CYL,(1,1))
+//SYSUT4   DD  SPACE=(CYL,(1,1))
+//SYSUT5   DD  SPACE=(CYL,(1,1))
+//SYSUT6   DD  SPACE=(CYL,(1,1))
+//SYSUT7   DD  SPACE=(CYL,(1,1))
+//*
+//JSTEP02  EXEC PGM=ASMA90,PARM='NOESD,NORLD,NOXREF,ASA'
+//*
+//***************************************************************
+//*                                                             *
+//*  JSTEP02 COMPILES THE ASSEMBLER SOURCE CODE.                *
+//*                                                             *
+//*  DDNAME              FILE DESCRIPTION                       *
+//*                                                             *
+//*  STEPLIB   INPUT:   KC00NIU.SYS2.MACLIB                     *
+//*  SYSIN     INPUT:   INSTREAM DATA FROM PROGRAM              *
+//*  SYSLIB    INPUT:   SYS1.MACLIB                             *
+//*                                                             *
+//***************************************************************
+//SYSLIB  DD   DSN=KC00NIU.SYS2.MACLIB,DISP=SHR
+//        DD   DSN=SYS1.MACLIB,DISP=SHR
+//SYSIN   DD *
+CALCSHRS CSECT
+*
+         PRINT NOGEN                DO NOT EXPAND MACRO CALLS
+*
+         STM   14,12,12(13)         STORE REGISTERS
+         LR    12,15                LOAD PARAM LIST
+         USING CALCSHRS,12
+         LA    14,MAINSAVE
+         ST    14,8(13)
+         ST    13,4(14)
+         LR    13,14
+*
+         LM    2,4,0(1)
+*
+         ZAP   DEPAMT(6),0(6,2)             DEPOSIT
+         ZAP   PRICE(3),0(3,3)              PRICE
+*
+         ZAP   SHRAMT(11),DEPAMT(6)       PLACE DEPAMT TO GET SHRAMT
+         SRP   SHRAMT,4,0                SHIFT SHARE AMOUNT
+         DP    SHRAMT(11),PRICE(3)        DIVIDE TO GET TOTAL SHARES
+         SRP   SHRAMT(8),64-1,5             NEXT 2 INSTRUCTS ROUNDS
+         SRP   SHRAMT(8),1,0             3 PLACES W/ 0 IN 4TH POS
+         ZAP   0(8,4),SHRAMT(8)
+*
+         L     13,4(13)
+         LM    14,12,12(13)         EXIT LINKAGE
+         BR    14                   BRANCH TO MAIN
+*
+         LTORG
+         ORG   CALCSHRS+((*-CALCSHRS+31)/32)*32
+         DC    C'$'
+**********************STORAGE************************************
+MAINSAVE DS    8F
+*
+DEPAMT   DC    PL6'0'
+*
+PRICE    DC    PL3'0'
+*
+SHRAMT   DC    PL11'0'
+         END   CALCSHRS
+/*
+//*
+//SYSLIN   DD DSN=&&OBJ2,
+//         DISP=(NEW,PASS)
+//*
+//SYSPRINT DD    SYSOUT=*
+//*
+//JSTEP03  EXEC PGM=HEWL,COND=(0,LT)
+//SYSLIN   DD DSN=&&OBJ1,UNIT=PUB,DISP=(OLD,DELETE)
+//         DD DSN=&&OBJ2,UNIT=PUB,DISP=(OLD,DELETE)
+//         DD *
+   ENTRY SALESRPT
+   MODE AMODE(24)
+/*
+//SYSLIB   DD DSN=CEE.SCEELKED,DISP=SHR
+//SYSLMOD  DD DSN=KC03Q15.CSCI465.LOADLIB(SALESRPT),
+//            UNIT=DISK,SPACE=(CYL,(2,2,5)),
+//            DISP=(MOD,KEEP,KEEP)
+//SYSUT1   DD UNIT=PUB,SPACE=(TRK,(10,10))
+//SYSPRINT DD SYSOUT=*
+//*
+//JSTEP04  EXEC PGM=IGYCRCTL,PARM='FLAG(I,I),APOST,LIB'
+//***************************************************************
+//*                                                              *
+//*  JSTEP04 CALL COBOL COMPILER IGYCRCTL                       *
+//*          TO COMPILE AN INSTREAM COBOL PROGRAM               *
+//*                                                             *
+//*  DDNAME              FILE DESCRIPTION                       *
+//*                                                             *
+//*  SYSIN    INPUT:   INSTREAM COBOL PROGRAM                   *
+//*  SYSLIN   OUTPUT:  TEMP STORAGE FOR OBJECT MODULE           *
+//*  SYSPRINT OUTPUT:  COMPILER OUTPUT                          *
+//*  SYSUTN   OUTPUT:  SEVEN TEMP SCRATCH PADS                  *
+//*                                                             *
+//***************************************************************
+//*
+//SYSIN    DD   *
+      ****************************************************************
+      * PROGRAM NAME:  BUILDTBL                                      *
+      *                                                              *
+      * FUNCTION: THIS PROGRAM READS INFORMATION FROM 2 INPUT FILES  *
+      *           AND BUILDS A 2 DIMENSIONAL TABLE TO HOLD           *
+      *           MUTUAL FUND DATA.                                  *
+      *                                                              *
+      * INPUT:     DATA5A - THE MUTUAL FUND FILE                     *
+      * INPUT:     DATA5B - THE CLOSING PRICE FILE                   *
+      * INPUT:     DATA5C - THE BROKER SALES FILE                    *
+      *                                                              *
+      ****************************************************************
+
+       IDENTIFICATION DIVISION.
+
+       PROGRAM-ID.    BUILDTBL
+       AUTHOR.        MATTHEW ROWE
+       DATE-WRITTEN.  11/25/2014.
+       EJECT
+
+       ENVIRONMENT DIVISION.
+
+       INPUT-OUTPUT SECTION.
+
+       FILE-CONTROL.
+
+           SELECT IN-FUND-FILE ASSIGN TO INFILE5A.
+           SELECT IN-DLY-FUND-PRICE-FILE ASSIGN TO INFILE5B.
+           SELECT IN-SALES-FILE ASSIGN TO INFILE5C.
+           SELECT PRINT-FILE ASSIGN TO PRINTER.
+
+       DATA DIVISION.
+
+       FILE SECTION.
+
+       FD  IN-FUND-FILE
+           RECORDING MODE IS F.
+
+       01  IN-FUND-RECORD.
+       COPY  FUNDREC.
+           05  FILLER                     PIC X(53).
+
+
+       FD  IN-DLY-FUND-PRICE-FILE
+           RECORDING MODE IS F.
+
+       COPY PRICEREC.
+
+       FD  IN-SALES-FILE
+           RECORDING MODE IS F.
+
+       COPY SALESREC.
+
+       FD  PRINT-FILE
+           RECORDING MODE IS F.
+
+       01  PRINT-RECORD                   PIC X(132).
+
+       WORKING-STORAGE SECTION.
+
+       01  EOF-FLAG-1                     PIC X VALUE 'N'.
+       01  EOF-FLAG-2                     PIC X VALUE 'N'.
+       01  EOF-FLAG-3                     PIC X VALUE 'N'.
+
+       01  TSUB                           PIC S9(5) COMP SYNC.
+       01  SALES-SUB                      PIC S9(5) COMP SYNC.
+
+       LINKAGE SECTION.
+
+       01  FUND-TBL.
+           05  FUND-COUNT                 PIC S9(3) COMP SYNC.
+           05  FUND-ENTRY                 OCCURS 1 TO 100
+                                          DEPENDING ON FUND-COUNT
+                                          ASCENDING KEY TBL-FUND-NBR
+                                          INDEXED BY TBL-FUND-NDX.
+               10  TBL-FUND-DEPS-TOT      PIC 9(9)V99 COMP-3.
+               10  TBL-FUND-SHRS-TOT      PIC 9(9)V99 COMP-3.
+
+       COPY FUNDTBL.
+
+       PROCEDURE DIVISION USING FUND-TBL.
+
+       0000-MAIN.
+
+           OPEN INPUT  IN-FUND-FILE
+                INPUT  IN-DLY-FUND-PRICE-FILE.
+
+
+           READ IN-FUND-FILE
+             AT END MOVE 'Y' TO EOF-FLAG-1
+           END-READ.
+
+           PERFORM 0100-BUILD-TABLE
+             VARYING TBL-FUND-NDX FROM 1 BY 1
+               UNTIL TBL-FUND-NDX > 100 OR EOF-FLAG-1 = 'Y'
+
+           CLOSE IN-FUND-FILE
+                 IN-DLY-FUND-PRICE-FILE.
+
+           MOVE 0 TO RETURN-CODE.
+
+           GOBACK.
+
+       0000-EXIT. EXIT.
+
+       0100-BUILD-TABLE.
+
+           ADD 1 TO FUND-COUNT.
+
+           MOVE IN-FUND-NBR OF IN-FUND-RECORD
+             TO TBL-FUND-NBR(TBL-FUND-NDX)
+
+           MOVE IN-FUND-NAME TO TBL-FUND-NAME(TBL-FUND-NDX).
+
+           READ IN-DLY-FUND-PRICE-FILE
+             AT END MOVE 'Y' TO EOF-FLAG-2
+           END-READ.
+
+           PERFORM VARYING IN-DLY-FUND-PRICE-NDX FROM 1 BY 1
+             UNTIL IN-DLY-FUND-PRICE-NDX > 5 OR EOF-FLAG-2 = 'Y'
+
+                 MOVE IN-DLY-FUND-PRICE(IN-DLY-FUND-PRICE-NDX)
+                   TO TBL-DLY-FUND-PRICE(TBL-FUND-NDX
+                                      IN-DLY-FUND-PRICE-NDX)
+           END-PERFORM.
+
+           READ IN-FUND-FILE
+             AT END MOVE 'Y' TO EOF-FLAG-1
+           END-READ.
+
+       0100-EXIT. EXIT.
+
+       EJECT
+
+//SYSLIB   DD  DSN=KC02322.CSCI465.COPYLIB,DISP=SHR
+//*
+//SYSLIN   DD  DSN=&&OBJ3,SPACE=(TRK,(3,3)),
+//             DISP=(MOD,PASS,DELETE)
+//*
+//SYSPRINT DD  SYSOUT=*
+//*
+//SYSUT1   DD  SPACE=(CYL,(1,1))
+//SYSUT2   DD  SPACE=(CYL,(1,1))
+//SYSUT3   DD  SPACE=(CYL,(1,1))
+//SYSUT4   DD  SPACE=(CYL,(1,1))
+//SYSUT5   DD  SPACE=(CYL,(1,1))
+//SYSUT6   DD  SPACE=(CYL,(1,1))
+//SYSUT7   DD  SPACE=(CYL,(1,1))
+//*
+//JSTEP05  EXEC PGM=HEWL,COND=(0,LT)
+//SYSLIN   DD DSN=&&OBJ3,UNIT=PUB,DISP=(OLD,DELETE)
+//SYSLIB   DD DSN=CEE.SCEELKED,DISP=SHR
+//SYSLMOD  DD DSN=KC03Q15.CSCI465.LOADLIB(BUILDTBL),
+//            UNIT=DISK,SPACE=(CYL,(2,2,5)),
+//            DISP=(MOD,KEEP,KEEP)
+//SYSUT1   DD UNIT=PUB,SPACE=(TRK,(10,10))
+//SYSPRINT DD SYSOUT=*
+//*
+//JSTEP06  EXEC PGM=SORT,PARM='CMP=CLC'
+//***************************************************************
+//*                                                             *
+//*  JSTEP01 CALL SORT UTILITY                                  *
+//*          TO SORT INPUT FILE DATA5A                          *
+//*                                                             *
+//*  DDNAME              FILE DESCRIPTION                       *
+//*                                                             *
+//*  SYSIN    INPUT:   INSTREAM COBOL PROGRAM                   *
+//*  SORTIN   INPUT:   PDS POPULATED WITH UNSORTED DATA         *
+//*  SORTOUT  OUTPUT:  SORTED DATA IN TEMP DATA SET             *
+//*                                                             *
+//***************************************************************
+//SORTIN   DD DSN=KC02322.CSCI465.DATAFA14(DATA5A),DISP=SHR
+//SORTOUT  DD DSN=&&SORTED,SPACE=(TRK,(1,5)),DISP=(NEW,PASS)
+//SYSOUT   DD SYSOUT=*
+//SYSIN    DD *
+  SORT FIELDS=(1,2,ZD,A)
+/*
+//*
+//JSTEP07  EXEC PGM=SALESRPT,COND=(0,LT)
+//*
+//STEPLIB  DD DSN=KC03Q15.CSCI465.LOADLIB,DISP=SHR
+//*
+//***************************************************************
+//*                                                             *
+//*  JSTEP07 FETCH AND EXECUTE PROGRAM                          *
+//*                                                             *
+//*  SYSLIB   INPUT:   LIBRARY MODULE LIBRARY                   *
+//*                                                             *
+//***************************************************************
+//*
+//INFILE5A DD  DSN=&&SORTED,DISP=(OLD,DELETE)
+//*
+//INFILE5B DD  DSN=KC02322.CSCI465.DATAFA14(DATA5B),DISP=SHR
+//*
+//INFILE5C DD  DSN=KC02322.CSCI465.DATAFA14(DATA5C),DISP=SHR
+//*
+//PRINTER  DD  SYSOUT=*
+//*
+//*
