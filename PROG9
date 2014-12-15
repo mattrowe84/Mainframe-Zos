@@ -1,0 +1,90 @@
+//KC03O10M JOB ,'MATTHEW ROWE' ,MSGCLASS=H    
+//STEP1   EXEC  PGM=ASSIST,PARM='MACRO=F'
+//STEPLIB   DD  DSN=KC02293.ASSIST.LOADLIB,DISP=SHR
+//SYSPRINT  DD  SYSOUT=*
+//SYSIN     DD  * 
+**********************************************************************  
+* ASSIGNMENT 9                                                          
+* NAME: MATTHEW ROWE                                                    
+* FUNCTION: USE MACRO'S FOR CALLING SUBS & ENTRY/RXIT LINKAGE      
+*                                                                       
+* INPUT: FT05F001                                                       
+* OUTPUT: STDOUT INDIVIDUAL PAY RECORDS PER EMPLOYEE AS WELL AS TOTALS  
+* ENTRY CONDS: NONE                                                     
+* EXIT CONDS: NONE                                                      
+*********************************************************************** 
+         MACRO
+&LABEL   CALL  &NAME,&PL=
+         AIF   ('&NAME' EQ '').ERROR
+         AIF   ('&PL' EQ '').NOPARM
+         L     15,=V(&NAME)
+         LA    1,&PL
+         BALR  14,15
+         MEXIT
+*
+.ERROR   MNOTE ' NO FUNCTION WAS PASSED, NOW EXITING'
+         MEXIT
+*
+.NOPARM  L     15,=V(&NAME)
+         BALR  14,15
+         MEND
+*
+         MACRO
+&LABEL   ENTER &NAME,&SAVE,&BR=12
+         AIF   ('&NAME' EQ '').ERR1
+         AIF   ('&SAVE' EQ '').ERR2
+         AIF   ('&BR' LT '10').BR1
+         AIF   ('&BR' GT '12').BR2
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    &BR,15                ENTRY LINKAGE                       
+         USING &NAME,&BR                                                 
+         LA    14,&SAVE             LOAD STORAGE AREA                   
+         ST    14,8(13)             ADDRESS HERE                        
+         ST    13,4(14)             ADDRESS BACK                        
+         LR    13,14
+         MEXIT
+.ERR1    MNOTE ' NO FUNCTION WAS PASSED, NOW EXITING'
+         MEXIT
+*
+.ERR2    MNOTE ' NO SAVE AREA WAS PASSED, NOW EXITING'
+         MEXIT
+*
+.BR1     MNOTE ' BAD CHOICE IN BASE REGISTER, YOU HAVE BEEN WARNED'
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    &BR,15                ENTRY LINKAGE                       
+         USING &NAME,&BR                                                 
+         LA    14,&SAVE             LOAD STORAGE AREA                   
+         ST    14,8(13)             ADDRESS HERE                        
+         ST    13,4(14)             ADDRESS BACK                        
+         LR    13,14
+         MEXIT
+*
+.BR2     MNOTE ' BAD CHOICE IN BASE REGISTER, YOU HAVE BEEN WARNED'
+         STM   14,12,12(13)         STORE REGISTERS                     
+         LR    &BR,15                ENTRY LINKAGE                       
+         USING &NAME,&BR                                                 
+         LA    14,&SAVE             LOAD STORAGE AREA                   
+         ST    14,8(13)             ADDRESS HERE                        
+         ST    13,4(14)             ADDRESS BACK                        
+         LR    13,14
+         MEND
+*
+         MACRO
+&LABEL   EXIT  &RC=
+         AIF   ('&RC' EQ '').NORM
+         L     15,&RC
+         N     15,=X'00000FFF'
+         L     13,4(0,13)
+         L     14,12(0,13)
+         LM    0,12,20(13)
+         BR    14 
+         MEXIT
+*
+.NORM    L     13,4(13)
+         LM    14,12,12(13)         EXIT LINKAGE                        
+         BR    14                   BRANCH TO MAIN   
+         MEND
+//          DD DSN=KC02314.SUMMER14.CSCI360.HW9.DRIVER,DISP=SHR
+//FT05F001  DD DUMMY
+//FT06F001  DD SYSOUT=*
+//
