@@ -1,0 +1,395 @@
+//KC03Q15A JOB  ,'MATTHEW ROWE',MSGCLASS=H
+//***************************************************************
+//*                                                             *
+//* CSCI 465/565 - FALL 2014                                    *
+//*                                                             *
+//* ASSIGNMENT 4                                                *
+//*                                                             *
+//* PROGRAMMER: MATTHEW ROWE                                    *
+//*                                                             *
+//* DATE: 10/24/2014                                            *
+//* TIME: 11:59:59 PM                                           *
+//*                                                             *
+//* THE PURPOSE OF THIS JOB IS TO COMPILE AND EXECUTE A         *
+//* ASSEMBLER PROGRAM TO READ IN A DATA FILES CONTAINING BROKER *
+//* AND SHARE INFORMATION TO CONSTRUCT A DAILY SALES REPORT.    *
+//*                                                             *
+//***************************************************************
+//JSTEP01 EXEC PGM=ASMA90,PARM=ASA
+//*
+//***************************************************************
+//*                                                             *
+//*  JSTEP01 COMPILES THE ASSEMBLER SOURCE CODE.                *
+//*                                                             *
+//*  DDNAME              FILE DESCRIPTION                       *
+//*                                                             *
+//*  STEPLIB   INPUT:   KC00NIU.SYS2.MACLIB                     *
+//*  SYSIN     INPUT:   INSTREAM DATA FROM PROGRAM              *
+//*  SYSLIB    INPUT:   SYS1.MACLIB                             *
+//*                                                             *
+//***************************************************************
+//SYSLIB  DD   DSN=KC00NIU.SYS2.MACLIB,DISP=SHR
+//        DD   DSN=SYS1.MACLIB,DISP=SHR
+//SYSIN   DD *
+*************************ASMPGM CSECT*********************************
+*                                                                    *
+* PROGRAM         PROG4                                              *
+* AUTHOR          MATTHEW ROWE                                       *
+* DATE WRITTEN    10/24/2014                                         *
+*                                                                    *
+* FUNCTION:       THIS PROGRAM READS INFORMATION FROM AN INPUT FILE  *
+*                 AND SIMPLY PRINTS IT TO THE SCREEN.                *
+*                                                                    *
+* INPUT:          INPUT FILE CONTAINING 80 BYTE BROKER RECORDS       *
+*                 INPUT FILE CONTAINING DAILY CLOSE SHARE PRICE      *
+*                                                                    *
+* OUTPUT:         ONE TEMPORARY FILE FOR HIGH SALES RECORD AND       *
+*                 ORGANIZED DATA FOR DAILY SALES REPORT TO STDOUT    *
+*                                                                    *
+**********************************************************************
+PROG4    CSECT                       BEGIN ASMPGM
+         PRINT  NOGEN                DO NOT EXPAND MACRO CALLS
+*
+         XSAVE  BR=12,SA=MAINSAVE,TR=NO
+*                                    STANDARD ENTRY LINKAGE
+         OPEN   (SHAREDCB,(INPUT))   OPEN SHARE PRICE FILE
+         LTR    15,15                CHECK FOR SUCCESSFUL OPEN
+         BZ     PACKSHR              BRANCH IF SUCCESSFUL TO LABEL
+         ABEND  555,DUMP             ABEND IF OPEN FAILS
+*
+PACKSHR  GET    SHAREDCB                PUT SHARE PRICE IN BUFFER
+         MVC    INBUFFER(80),0(1)
+         PACK   SHRPRICE(3),INBUFFER(5) PACK BUFFER INTO STORAGE
+*
+         CLOSE  (SHAREDCB)
+*
+         OPEN   (BROKRDCB,(INPUT))   OPEN BROKER FILE FOR READING
+         LTR    15,15                CHECK FOR SUCCESSFUL OPEN
+         BZ     OPEN2OK              BRANCH IF SUCCESSFUL TO LABEL
+         ABEND  666,DUMP             ABEND IF OPEN FAILS
+*
+*OPEN1OK  OPEN   (LRGSLDCB,(OUTPUT))  OPEN BROKER FILE FOR READING
+*         LTR    15,15                CHECK FOR SUCCESSFUL OPEN
+*         BZ     OPEN2OK              BRANCH IF SUCCESSFUL TO LABEL
+*         ABEND  777,DUMP             ABEND IF OPEN FAILS
+*
+OPEN2OK  OPEN   (OUTDCB,(OUTPUT))    OPEN OUTPUT FOR PRINTING
+         LTR    15,15                CHECK FOR SUCCESSFUL OPEN
+         BZ     OPEN3OK              BRANCH IF SUCCESSFUL TO LABEL
+         ABEND  888,DUMP             ABEND IF OPEN FAILS
+*
+OPEN3OK  GET    BROKRDCB,INBUFFER    GET THE FIRST 80 BYTES
+*
+DATIME   TIME   DEC,DATESTR,LINKAGE=SYSTEM,DATETYPE=MMDDYYYY
+*
+LOOP1    CLI    EOFFLAG1,C'Y'        CHECK FOR END OF INPUT DATA
+*
+         BE     ENDLOOP1                  BRANCH OUT OF LOOP IF EOF
+*
+         CP     PGCNTR(2),NEWPAGE(2)      CHECK IF 15 RECS
+         BE     NEWPG                     BRANCH TO HEADER PRINT
+         AP     PGCNTR(2),PAGEINC(1)      USE R5 AS CNTR FOR NEW PG
+*
+         AP     RECS(3),PAGEINC(1)        INCREMENT RECORDS
+         MVC    OUTCITY(24),INBUFFER      MOVE CITY TO PRINT LINE
+         MVC    OUTBRKR(24),INBUFFER+24   MOVE BROER TO PRINT LINE
+*
+         PACK   DEPAMT(6),INBUFFER+48(11) PACK DEPOSIT AMOUNT
+*
+         LA     1,ODEPAMT+11              POINTER IN CASE OF 0 AMOUNT
+         MVC    ODEPAMT(15),DEPPAT        SET NUMERIC PATTERN FIELD
+         EDMK   ODEPAMT(15),DEPAMT        MOVE DEPOSIT TO PATTERN
+         BCTR   1,0                       MOVE TO FRONT OF DEPOSIT
+         MVI    0(1),C'$'                 ADD $ SIGN
+*
+         ZAP    SHRAMT(11),DEPAMT(6)      PLACE DEPAMT TO GET SHRAMT
+         SRP    SHRAMT,4,0                SHIFT SHARE AMOUNT
+         DP     SHRAMT(11),SHRPRICE(3)    DIVIDE TO GET TOTAL SHARES
+         SRP    SHRAMT(8),64-1,5             NEXT 2 INSTRUCTS ROUNDS
+         SRP    SHRAMT(8),1,0             3 PLACES W/ 0 IN 4TH POS.
+         AP     TOTSHRS(7),SHRAMT(8)    ADD SHARES SOLD TO TOTAL
+*
+         MVC    OSHRAMT(20),SHRPAT      SET PRINT PATTERN
+         EDMK   OSHRAMT(20),SHRAMT      PUT SHRAMT IN NUM EDITED FIELD
+         CLI    INBUFFER+59,C'1'
+         BE     COMRT1                  IF EQUAL BRANCH TO COM RATE 1
+         ZAP    COMMISS(8),DEPAMT(6)
+         MP     COMMISS(8),COMPCT2(2)
+         SRP    COMMISS(8),1,5
+         AP     TOTCOMS(6),COMMISS(8)   ADD COMMISSION TO TOTAL
+         MVC    OCOMM(13),COMPAT
+         EDMK   OCOMM(13),COMMISS
+         BCTR   1,0                     MOVE TO FRONT OF COMMISS
+         MVI    0(1),C'$'               ADD $ SIGN
+         B      PRINTRD                 BRANCH TO PRINT READY
+*
+COMRT1   ZAP    COMMISS(8),DEPAMT(6)
+         MP     COMMISS(8),COMPCT1(2)
+         SRP    COMMISS(8),1,5
+         AP     TOTCOMS(6),COMMISS(8)   ADD COMMISSION TO TOTAL
+         MVC    OCOMM(13),COMPAT
+         EDMK   OCOMM(13),COMMISS
+         BCTR   1,0                       MOVE TO FRONT OF COMMISS
+         MVI    0(1),C'$'                 ADD $ SIGN
+*
+PRINTRD  PUT    OUTDCB,PRINTLN          PUT THE DATA TO SCREEN
+*
+         AP     TOTDEPS(7),DEPAMT(6)    ADD DEPAMT TO TOTAL
+         LA     4,1                     USE R4 FOR RECS READ
+*
+         GET    BROKRDCB,INBUFFER       GET THE NEXT RECORD
+*
+         B      LOOP1                   BRANCH TO TOP OF LOOP
+*
+NEWPG    DS     0H                      CLEAR COUNTER REGISTER
+         SP     PGCNTR(2),NEWPAGE(2)
+         AP     PAGECTR(2),PAGEINC(1)   INCREMENT PAGE NUMBER
+         MVC    PGNUM(4),PAGEPAT
+         ED     PGNUM(4),PAGECTR        PRINT PAGE NUMBER
+         MVC    OUTDATE(13),DATEPAT     MOVE DATE INTO FIELD
+         ED     OUTDATE(13),DATESTR+7
+         PUT    OUTDCB,REP1H1           PRINT HEADER LINE 1
+         MVC    OUTTIME(9),TIMEPAT      MOVE TIME INTO FIELD
+         ED     OUTTIME(9),DATESTR
+         PUT    OUTDCB,REP1H2           PRINT HEADER LINE 2
+         PUT    OUTDCB,REP1H3           PRINT HEADER LINE 3
+         PUT    OUTDCB,HEADDIV          DIVDER LINE OF HYPHENS
+         B      LOOP1                   BRANCH TO TOP
+*
+ENDLOOP1 CLOSE  (BROKRDCB)              CLOSE THE 3 DCBs
+*
+         PUT    OUTDCB,EOR1H1
+         PUT    OUTDCB,EOR1H2
+         PUT    OUTDCB,HEADDIV
+*
+         MVC    OTOTREC(6),TOTRPAT
+         ED     OTOTREC(6),RECS
+         LA     1,OTOTDEP+15            INCASE 0 AMOUNT
+         MVC    OTOTDEP(19),TOTDPAT     MOVE TOTAL DEPOSIT TO
+         EDMK   OTOTDEP(19),TOTDEPS     PRINT LINE
+         BCTR   1,0                     MOVE TO FRONT OF COMMISS
+         MVI    0(1),C'$'               ADD $ SIGN
+         MVC    OTOTSHR(17),TOTSPAT     MOVE TOTAL SHARES TO
+         EDMK   OTOTSHR(17),TOTSHRS     PRINT LINE
+         LA     1,OTOTCOM+11            INCASE OF 0 AMOUNT
+         MVC    OTOTCOM(15),TOTCPAT     MOVE TOTAL COMMISSION TO
+         EDMK   OTOTCOM(15),TOTCOMS     PRINT LINE
+         BCTR   1,0                     MOVE TO FRONT OF COMMISS
+         MVI    0(1),C'$'               ADD $ SIGN
+         PUT    OUTDCB,EORPRINT         PUT THE DATA TO SCREEN
+*
+         CLOSE  (OUTDCB)             CLOSE OUPUT
+*
+         XRETURN RC=0,TR=NO          STANDARD EXIT LINKAGE
+*
+         LTORG                       LTORG TO CLEAR LITERALS
+*
+***************MAIN STORAGE*************************
+*
+MAINSAVE DS    18F                   MAINSAVE FOR STANDARD LINKAGE
+*
+INBUFFER DC    80C'$'                INPUT BUFFER FILL WITH '$'
+*
+EOFFLAG1 DC    C'N'                  EOFFLAG FOR BROKER FILE
+*
+EOFFLAG2 DC    C'N'                  EOFFLAG FOR TEMP FILE
+*
+SHRPRICE DC    PL3'0'                SHARE PRICE STORAGE
+*
+DEPAMT   DC    PL6'0'                DEPOSIT AMOUNT STORAGE
+*
+SHRAMT   DC    PL11'0'               SHARES SOLD FIELD
+*
+TOTRECS  DC    F'0'                  TOTAL RECORDS READ
+*
+TOTDEPS  DC    PL7'0'                TOTAL DEPOSITS FOR DAY
+*
+TOTSHRS  DC    PL7'0'                TOTAL SHARES SOLD
+*
+TOTCOMS  DC    PL6'0'                TOTAL COMMISSION FOR DAY
+*
+COMPCT1  DC    PL2'625'              5/8% COMMISSION
+*
+COMPCT2  DC    PL2'875'              7/8% COMMISSION
+*
+COMMISS  DC    PL8'0'                COMMISSION STORAGE
+*
+DATESTR  DC    4F'0'                 DATE-TIME STORAGE
+*
+PAGEINC  DC    P'1'                  INCREMENT PAGE
+*
+PAGECTR  DC    PL2'00'               PAGE COUNTER
+*
+RECS     DC    PL3'000'              RECORD COUNTER
+*
+NEWPAGE  DC    PL2'15'               CHECKER FOR NEW PAGE
+*
+PGCNTR   DC    PL2'15'               COUNTER FOR NEW PAGE
+*
+*****************PRINT PATTERNS**********************************
+*
+COMPAT   DC    XL13'40206B2020206B2021204B2020'
+*
+DEPPAT   DC    XL15'402020206B2020206B2021204B2020'
+*
+SHRPAT   DC    XL20'4020206B2020206B2020206B2021204B20202020'
+*
+TOTRPAT  DC    XL6'402020202020'
+*
+TOTDPAT  DC    XL19'4020206B2020206B2020206B2021204B2020'
+*
+TOTSPAT  DC    XL17'402020206B2020206B2021204B20202020'
+*
+TOTCPAT  DC    XL15'402020206B2020206B2021204B2020'
+*
+PAGEPAT  DC    XL4'40202020'
+*
+DATEPAT  DC    XL13'40202120206120206120202020'
+*
+TIMEPAT  DC    XL09'4020207A20207A2020'
+*
+******************PRINT LINES *********************************
+*
+PRINTLN  DC    CL1'0'                HOLDS OUTPUT FOR PRINTED REPORT
+OUTCITY  DS    CL24                  HOLDS BROKER CITY
+         DC    9C' '                 FILLER
+OUTBRKR  DS    CL24                  HOLDS BROKER NAME
+         DC    9C' '                 FILLER
+ODEPAMT  DS    CL15                  OUT DEPOSIT AMOUNT
+         DC    9C' '                 FILLER
+OSHRAMT  DS    CL20                  OUT SHARE AMOUNT
+         DC    9C' '                 FILLER
+OCOMM    DS    CL13                  OUT COMMISSION AMOUNT
+*
+EORPRINT DC    CL1'0'                HOLDS DATA FOR WND OF REPORT
+OTOTREC  DS    CL6
+         DC    10C' '                FILLER
+OTOTDEP  DS    CL19
+         DC    10C' '                FILLER
+OTOTSHR  DS    CL17
+         DC    10C' '                FILLER
+OTOTCOM  DS    CL15
+         DC    48C' '                FILLER TO END OF LINE
+*
+*****************HEADER PRINTLINES************
+*
+REP1H1   DC    C'1'
+OUTDATE  DS    CL13
+         DC    31C' '                FILLER
+         DC    CL46'DEWEY, CHEATHAM AND HOWE MUTUAL FUND WORLDWIDE'
+         DC    31C' '                FILLER
+         DC    CL6'PAGE: '
+PGNUM    DS    4C
+*
+REP1H2   DC    C' '
+OUTTIME  DS    CL9
+         DC    43C' '                FILLER
+         DC    CL34'BROKER SALES AND COMMISSION REPORT'
+         DC    46C' '
+*
+REP1H3   DC    C' '
+         DC    CL11'BRANCH CITY'
+         DC    22C' '
+         DC    CL11'BROKER NAME'
+         DC    23C' '
+         DC    CL14'DEPOSIT AMOUNT'
+         DC    18C' '
+         DC    CL11'SHARES SOLD'
+         DC    12C' '
+         DC    CL10'COMMISSION'
+HEADDIV  DC    C' '
+         DC    132C'-'
+*
+EOR1H1   DC    C'1'
+         DC    66C' '
+         DC    CL20'END OF REPORT TOTALS'
+         DC    66C' '
+*
+EOR1H2   DC    C' '
+         DC    CL12'RECORDS READ'
+         DC    7C' '
+         DC    CL13'TOTAL DEPOSIT'
+         DC    10C' '
+         DC    CL12'TOTAL SHARES'
+         DC    15C' '
+         DC    CL16'TOTAL COMMISSION'
+         DC    47C' '
+*
+*****************DCB STORAGE******************
+*
+***INPUT DCB FOR DATA1***
+*
+SHAREDCB DCB   DDNAME=SHAREPR,                                         X
+               DEVD=DA,                                                X
+               DSORG=PS,                                               X
+               MACRF=GL,                                               X
+               RECFM=FB,                                               X
+               LRECL=80,                                               X
+               BLKSIZE=800
+*
+BROKRDCB DCB   DDNAME=SALESDY,                                         X
+               DEVD=DA,                                                X
+               DSORG=PS,                                               X
+               MACRF=GM,                                               X
+               RECFM=FB,                                               X
+               LRECL=80,                                               X
+               BLKSIZE=800,                                            X
+               EODAD=EOF1
+
+*RGSLDCB DCB   DDNAME=SALESDY,
+*              DEVD=DA,
+*              DSORG=PS,
+*              MACRF=GM,
+*              RECFM=FBA,
+*              LRECL=32,
+*              BLKSIZE=320,
+*              EODAD=EOF1
+
+*
+***EOF FOR INDCB EODAD***
+*
+EOF1     MVI   EOFFLAG1,C'Y'
+         BR    14
+EOF2     MVI   EOFFLAG2,C'Y'
+         BR    14
+*
+***OUTPUT DCB FOR PRINTING TO SCREEN***
+*
+OUTDCB   DCB   DDNAME=PRINTER,                                         X
+               DEVD=DA,                                                X
+               DSORG=PS,                                               X
+               MACRF=PM,                                               X
+               RECFM=FBA,                                              X
+               LRECL=133,                                              X
+               BLKSIZE=133
+*
+         END   PROG4
+/*
+//*
+//SYSLIN   DD DSN=&&TEMP,
+//         DISP=(NEW,PASS)
+//*
+//SYSPRINT DD    SYSOUT=*
+//*
+//JSTEP02 EXEC  PGM=HEWLDRGO,PARM='MAP,LET',COND=(4,LT)
+//*
+//***************************************************************
+//*                                                             *
+//*  JSTEP02 CREATES A LOAD MODULE FROM THE INPUT OBJECT        *
+//*  MODULE, EXECUTES THE LOAD MODULE, AND THEN PRINTS IT.      *
+//*                                                             *
+//*  SYSLIN     INPUT:   THE OBJECT MODULE                      *
+//*  SYSLIB     INPUT:   LOAD MODULE LIBRARIES NEEDED BY        *
+//*                      THE LOADER                             *
+//*  PGMINPUT   INPUT:   INSTREAM DATA LABEL                    *
+//*                                                             *
+//*  PRINTER    OUTPUT:  lABEL FOR OUTPUT TO STDOUT             *
+//***************************************************************
+//SYSLIN   DD    DSN=&&TEMP,DISP=(OLD,DELETE)
+//SHAREPR  DD    DSN=KC02322.CSCI465.DATAFA14(DATA3A),DISP=SHR
+//SALESDY  DD    DSN=KC02322.CSCI465.DATAFA14(DATA3B),DISP=SHR
+//SALESRP  DD    SPACE=(TRK,(3,3))
+//PRINTER  DD    SYSOUT=*
+//*
+//SYSLIB   DD    DSN=KC00NIU.SYS2.CALLIB,DISP=SHR
+//*
